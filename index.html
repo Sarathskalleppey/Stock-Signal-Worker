@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signal Desk — Stock Market Signal App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0B1220;
+    --bg-panel: #101A2E;
+    --bg-panel-hover: #14213A;
+    --border: #1E2C46;
+    --text-primary: #EDEFF4;
+    --text-secondary: #8B96A8;
+    --text-dim: #57647A;
+    --green: #3DDC97;
+    --green-dim: #1F6B4E;
+    --red: #FF6B5C;
+    --red-dim: #7A2E27;
+    --amber: #E8B34F;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(232, 179, 79, 0.05), transparent 40%),
+      radial-gradient(circle at 85% 100%, rgba(61, 220, 151, 0.04), transparent 40%);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    padding: 24px 20px 60px;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  /* ---------- Header ---------- */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .brand-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 6px;
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 8px 16px 8px 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .dot.live { background: var(--green); }
+  .dot.live::after {
+    content: '';
+    position: absolute; inset: -4px;
+    border-radius: 50%;
+    border: 1px solid var(--green);
+    animation: pulse 1.8s ease-out infinite;
+  }
+  .dot.offline { background: var(--red); }
+
+  @keyframes pulse {
+    0% { transform: scale(0.6); opacity: 0.9; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+
+  .status-pill strong { color: var(--text-primary); font-weight: 600; }
+
+  /* ---------- Stat cards ---------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .stat-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 600;
+  }
+
+  .stat-value.buy { color: var(--green); }
+  .stat-value.sell { color: var(--red); }
+
+  /* ---------- Filters ---------- */
+  .filters {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+
+  .filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .chip {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 7px 14px;
+    border-radius: 100px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .chip:hover { border-color: var(--text-dim); color: var(--text-primary); }
+  .chip.active {
+    background: rgba(232, 179, 79, 0.12);
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  .search-input {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 7px 14px;
+    border-radius: 100px;
+    outline: none;
+    min-width: 160px;
+  }
+  .search-input:focus { border-color: var(--text-dim); }
+  .search-input::placeholder { color: var(--text-dim); }
+
+  /* ---------- Signal feed ---------- */
+  .feed-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .feed-title {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+  }
+
+  .feed-count { font-size: 11px; color: var(--text-dim); }
+
+  .signal-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .signal-row {
+    display: grid;
+    grid-template-columns: 76px 1fr 90px 110px 90px 130px;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-panel);
+    padding: 13px 16px;
+    font-size: 12.5px;
+    animation: slideIn 0.35s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .signal-row:hover { background: var(--bg-panel-hover); }
+
+  .sig-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    padding: 4px 0;
+    border-radius: 5px;
+    width: 56px;
+  }
+  .sig-badge.buy { background: rgba(61, 220, 151, 0.12); color: var(--green); }
+  .sig-badge.sell { background: rgba(255, 107, 92, 0.12); color: var(--red); }
+
+  .sig-symbol { font-weight: 600; color: var(--text-primary); }
+  .sig-sub { color: var(--text-dim); font-size: 10.5px; margin-top: 2px; }
+
+  .sig-price { text-align: right; font-weight: 600; }
+  .sig-indicator {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+  .sig-tf {
+    text-align: center;
+    color: var(--amber);
+    font-size: 11px;
+  }
+  .sig-time { text-align: right; color: var(--text-dim); font-size: 11px; }
+
+  .empty-state, .error-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+    font-size: 13px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .error-state { color: var(--red); }
+
+  footer {
+    margin-top: 32px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  @media (max-width: 720px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .signal-row {
+      grid-template-columns: 1fr;
+      row-gap: 6px;
+    }
+    .sig-price, .sig-indicator, .sig-tf, .sig-time { text-align: left; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dot.live::after { animation: none; }
+    .signal-row { animation: none; }
+  }
+
+  button:focus-visible, .chip:focus-visible, .search-input:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <div class="brand-eyebrow">NIFTY 100 · MIDCAP 100 · SMALLCAP 100</div>
+        <h1>Signal Desk</h1>
+      </div>
+      <div class="status-pill" id="statusPill">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Connecting…</span>
+      </div>
+    </header>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-label">Instruments tracked</div>
+        <div class="stat-value" id="statInstruments">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Last tick</div>
+        <div class="stat-value" id="statLastTick" style="font-size:14px;">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Buy signals (loaded)</div>
+        <div class="stat-value buy" id="statBuy">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Sell signals (loaded)</div>
+        <div class="stat-value sell" id="statSell">—</div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="filter-group" id="signalFilter">
+        <div class="chip active" data-signal="ALL">All signals</div>
+        <div class="chip" data-signal="BUY">Buy only</div>
+        <div class="chip" data-signal="SELL">Sell only</div>
+      </div>
+      <div class="filter-group" id="tfFilter">
+        <div class="chip active" data-tf="ALL">All timeframes</div>
+        <div class="chip" data-tf="5m">5m</div>
+        <div class="chip" data-tf="15m">15m</div>
+        <div class="chip" data-tf="30m">30m</div>
+        <div class="chip" data-tf="1h">1h</div>
+        <div class="chip" data-tf="4h">4h</div>
+        <div class="chip" data-tf="1d">1d</div>
+      </div>
+      <input class="search-input" id="symbolSearch" placeholder="Filter by symbol…">
+    </div>
+
+    <div class="feed-header">
+      <div class="feed-title">Live Signal Feed</div>
+      <div class="feed-count" id="feedCount"></div>
+    </div>
+
+    <div id="feedContainer">
+      <div class="empty-state">Loading signals…</div>
+    </div>
+
+    <footer id="footerNote">Refreshes every 15s · Backend: <span id="apiBaseLabel"></span></footer>
+  </div>
+
+<script>
+  // ---- Configure your backend URL here ----
+  const API_BASE = window.SIGNAL_API_BASE || "https://facilitate-vacuum-dubai-magazines.trycloudflare.com";
+
+  document.getElementById('apiBaseLabel').textContent = API_BASE;
+
+  let allSignals = [];
+  let activeSignalFilter = "ALL";
+  let activeTfFilter = "ALL";
+  let symbolQuery = "";
+
+  function fmtTime(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return "no data yet";
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 5) return "just now";
+    if (diff < 60) return diff + "s ago";
+    if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+    return Math.floor(diff / 3600) + "h ago";
+  }
+
+  async function fetchHealth() {
+    try {
+      const res = await fetch(`${API_BASE}/health`);
+      const data = await res.json();
+      const dot = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+
+      if (data.status === "ok" && data.angel_connected) {
+        dot.className = "dot live";
+        text.innerHTML = `<strong>Live</strong> · Angel One connected`;
+      } else {
+        dot.className = "dot offline";
+        text.innerHTML = `<strong>Degraded</strong> · check backend`;
+      }
+
+      document.getElementById('statInstruments').textContent = data.instruments_tracked ?? "—";
+      document.getElementById('statLastTick').textContent = timeAgo(data.last_tick_at);
+    } catch (e) {
+      const dot = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+      dot.className = "dot offline";
+      text.innerHTML = `<strong>Offline</strong> · can't reach backend`;
+    }
+  }
+
+  async function fetchSignals() {
+    try {
+      const res = await fetch(`${API_BASE}/signals?limit=100`);
+      const data = await res.json();
+      allSignals = Array.isArray(data) ? data : [];
+      renderStats();
+      renderFeed();
+    } catch (e) {
+      document.getElementById('feedContainer').innerHTML =
+        `<div class="error-state">Couldn't load signals. Check that the backend is reachable and CORS is enabled.</div>`;
+    }
+  }
+
+  function renderStats() {
+    const buys = allSignals.filter(s => s.signal === "BUY").length;
+    const sells = allSignals.filter(s => s.signal === "SELL").length;
+    document.getElementById('statBuy').textContent = buys;
+    document.getElementById('statSell').textContent = sells;
+  }
+
+  function symbolFromInstrumentId(id) {
+    return id ? id.slice(0, 8).toUpperCase() : "—";
+  }
+
+  function displaySymbol(s) {
+    // Prefer the real symbol enriched by the backend; fall back to a shortened UUID.
+    if (s.symbol) return s.symbol.replace(/-EQ$/, "");
+    return symbolFromInstrumentId(s.instrument_id);
+  }
+
+  function renderFeed() {
+    let filtered = allSignals.filter(s => {
+      if (activeSignalFilter !== "ALL" && s.signal !== activeSignalFilter) return false;
+      if (activeTfFilter !== "ALL" && s.timeframe !== activeTfFilter) return false;
+      if (symbolQuery && !(s.symbol || s.instrument_id || "").toLowerCase().includes(symbolQuery.toLowerCase())) return false;
+      return true;
+    });
+
+    filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    document.getElementById('feedCount').textContent = `${filtered.length} shown`;
+
+    const container = document.getElementById('feedContainer');
+
+    if (filtered.length === 0) {
+      container.innerHTML = `<div class="empty-state">No signals match these filters yet. Signals appear here the moment a candle closes with a crossover.</div>`;
+      return;
+    }
+
+    container.innerHTML = `<div class="signal-list">` + filtered.map(s => `
+      <div class="signal-row">
+        <div class="sig-badge ${s.signal === 'BUY' ? 'buy' : 'sell'}">${s.signal}</div>
+        <div>
+          <div class="sig-symbol">${displaySymbol(s)}</div>
+          <div class="sig-sub">${s.previous_relationship} → ${s.new_relationship}</div>
+        </div>
+        <div class="sig-price">₹${Number(s.price).toFixed(2)}</div>
+        <div class="sig-indicator">${s.indicator}</div>
+        <div class="sig-tf">${s.timeframe}</div>
+        <div class="sig-time">${fmtTime(s.created_at)}</div>
+      </div>
+    `).join('') + `</div>`;
+  }
+
+  // ---- Filter wiring ----
+  document.getElementById('signalFilter').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    document.querySelectorAll('#signalFilter .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    activeSignalFilter = chip.dataset.signal;
+    renderFeed();
+  });
+
+  document.getElementById('tfFilter').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    document.querySelectorAll('#tfFilter .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    activeTfFilter = chip.dataset.tf;
+    renderFeed();
+  });
+
+  document.getElementById('symbolSearch').addEventListener('input', e => {
+    symbolQuery = e.target.value;
+    renderFeed();
+  });
+
+  // ---- Boot ----
+  function refresh() {
+    fetchHealth();
+    fetchSignals();
+  }
+  refresh();
+  setInterval(refresh, 15000);
+</script>
+</body>
+</html>
