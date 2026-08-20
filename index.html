@@ -37,7 +37,7 @@
     padding: 24px 20px 60px;
   }
 
-  .wrap { max-width: 1080px; margin: 0 auto; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
 
   /* ---------- Header ---------- */
   header {
@@ -134,6 +134,8 @@
 
   .stat-value.buy { color: var(--green); }
   .stat-value.sell { color: var(--red); }
+  .stat-value.pos { color: var(--green); }
+  .stat-value.neg { color: var(--red); }
 
   /* ---------- Filters ---------- */
   .filters {
@@ -163,7 +165,7 @@
     color: var(--amber);
   }
 
-  .search-input {
+  .search-input, .date-input {
     background: var(--bg-panel);
     border: 1px solid var(--border);
     color: var(--text-primary);
@@ -174,8 +176,9 @@
     outline: none;
     min-width: 160px;
   }
-  .search-input:focus { border-color: var(--text-dim); }
+  .search-input:focus, .date-input:focus { border-color: var(--text-dim); }
   .search-input::placeholder { color: var(--text-dim); }
+  .date-input { min-width: 140px; color-scheme: dark; }
 
   /* ---------- Signal feed ---------- */
   .feed-header {
@@ -207,7 +210,7 @@
 
   .signal-row {
     display: grid;
-    grid-template-columns: 76px 1fr 90px 110px 90px 130px;
+    grid-template-columns: 66px 1fr 92px 108px 108px 100px 132px;
     align-items: center;
     gap: 12px;
     background: var(--bg-panel);
@@ -233,26 +236,50 @@
     letter-spacing: 0.04em;
     padding: 4px 0;
     border-radius: 5px;
-    width: 56px;
+    width: 52px;
   }
   .sig-badge.buy { background: rgba(61, 220, 151, 0.12); color: var(--green); }
   .sig-badge.sell { background: rgba(255, 107, 92, 0.12); color: var(--red); }
 
-  .sig-symbol { font-weight: 600; color: var(--text-primary); }
+  .sig-symbol {
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-decoration: underline dotted var(--text-dim);
+    text-underline-offset: 3px;
+    width: fit-content;
+  }
+  .sig-symbol:hover { color: var(--amber); }
   .sig-sub { color: var(--text-dim); font-size: 10.5px; margin-top: 2px; }
 
-  .sig-price { text-align: right; font-weight: 600; }
-  .sig-indicator {
-    text-align: center;
-    color: var(--text-secondary);
-    font-size: 11px;
+  .sig-entry { text-align: right; font-weight: 600; }
+  .sig-entry .sig-sub { text-align: right; }
+
+  .sig-levels { text-align: right; font-size: 10.5px; line-height: 1.5; }
+  .sig-levels .sl { color: var(--red); }
+  .sig-levels .tp { color: var(--green); }
+
+  .sig-pnl { text-align: right; font-weight: 600; }
+  .sig-pnl.pos { color: var(--green); }
+  .sig-pnl.neg { color: var(--red); }
+  .sig-pnl .sig-sub { text-align: right; }
+
+  .status-tag {
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-block;
   }
-  .sig-tf {
-    text-align: center;
-    color: var(--amber);
-    font-size: 11px;
-  }
+  .status-tag.open { background: rgba(232, 179, 79, 0.12); color: var(--amber); }
+  .status-tag.target_hit { background: rgba(61, 220, 151, 0.12); color: var(--green); }
+  .status-tag.stoploss_hit { background: rgba(255, 107, 92, 0.12); color: var(--red); }
+  .status-tag.eod_close { background: rgba(139, 150, 168, 0.12); color: var(--text-secondary); }
+
   .sig-time { text-align: right; color: var(--text-dim); font-size: 11px; }
+  .sig-time .exact { color: var(--text-secondary); }
+  .sig-time .ago { font-size: 10px; }
 
   .empty-state, .error-state {
     text-align: center;
@@ -272,13 +299,66 @@
     color: var(--text-dim);
   }
 
-  @media (max-width: 720px) {
-    .stats { grid-template-columns: repeat(2, 1fr); }
+  /* ---------- Chart-open modal ---------- */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(4, 8, 16, 0.65);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal-backdrop.show { display: flex; }
+
+  .modal-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    width: 100%;
+    max-width: 340px;
+    text-align: center;
+  }
+  .modal-symbol {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .modal-hint {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+  .modal-buttons { display: flex; flex-direction: column; gap: 10px; }
+  .modal-btn {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .modal-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .modal-btn.cancel { color: var(--text-dim); margin-top: 4px; }
+  .modal-btn.cancel:hover { border-color: var(--text-dim); color: var(--text-secondary); }
+
+  @media (max-width: 900px) {
     .signal-row {
       grid-template-columns: 1fr;
       row-gap: 6px;
     }
-    .sig-price, .sig-indicator, .sig-tf, .sig-time { text-align: left; }
+    .sig-entry, .sig-levels, .sig-pnl, .sig-time { text-align: left; }
+    .sig-levels, .sig-pnl .sig-sub, .sig-time .ago { text-align: left; }
+  }
+
+  @media (max-width: 720px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -286,7 +366,7 @@
     .signal-row { animation: none; }
   }
 
-  button:focus-visible, .chip:focus-visible, .search-input:focus-visible {
+  button:focus-visible, .chip:focus-visible, .search-input:focus-visible, .date-input:focus-visible {
     outline: 2px solid var(--amber);
     outline-offset: 2px;
   }
@@ -315,12 +395,13 @@
         <div class="stat-value" id="statLastTick" style="font-size:14px;">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Buy signals (loaded)</div>
-        <div class="stat-value buy" id="statBuy">—</div>
+        <div class="stat-label">Signals shown</div>
+        <div class="stat-value" id="statCount">—</div>
+        <div class="sig-sub" id="statBuySell"></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Sell signals (loaded)</div>
-        <div class="stat-value sell" id="statSell">—</div>
+        <div class="stat-label">Net P&amp;L (Rs 1L / signal)</div>
+        <div class="stat-value" id="statPnl">—</div>
       </div>
     </div>
 
@@ -329,6 +410,11 @@
         <div class="chip active" data-signal="ALL">All signals</div>
         <div class="chip" data-signal="BUY">Buy only</div>
         <div class="chip" data-signal="SELL">Sell only</div>
+      </div>
+      <div class="filter-group" id="statusFilter">
+        <div class="chip active" data-status="ALL">All status</div>
+        <div class="chip" data-status="open">Live (open)</div>
+        <div class="chip" data-status="closed">Closed</div>
       </div>
       <div class="filter-group" id="tfFilter">
         <div class="chip active" data-tf="ALL">All timeframes</div>
@@ -339,11 +425,12 @@
         <div class="chip" data-tf="4h">4h</div>
         <div class="chip" data-tf="1d">1d</div>
       </div>
+      <input type="date" class="date-input" id="dateFrom" title="From date">
       <input class="search-input" id="symbolSearch" placeholder="Filter by symbol…">
     </div>
 
     <div class="feed-header">
-      <div class="feed-title">Live Signal Feed</div>
+      <div class="feed-title">Signal History</div>
       <div class="feed-count" id="feedCount"></div>
     </div>
 
@@ -354,6 +441,18 @@
     <footer id="footerNote">Refreshes every 15s · Backend: <span id="apiBaseLabel"></span></footer>
   </div>
 
+  <div class="modal-backdrop" id="chartModal">
+    <div class="modal-box">
+      <div class="modal-symbol" id="modalSymbol">SYMBOL</div>
+      <div class="modal-hint">Open this stock's chart in:</div>
+      <div class="modal-buttons">
+        <button class="modal-btn" id="openTradingView">TradingView</button>
+        <button class="modal-btn" id="openNSE">NSE Website</button>
+        <button class="modal-btn cancel" id="closeModal">Cancel</button>
+      </div>
+    </div>
+  </div>
+
 <script>
   // ---- Configure your backend URL here ----
   const API_BASE = window.SIGNAL_API_BASE || "https://facilitate-vacuum-dubai-magazines.trycloudflare.com";
@@ -362,13 +461,26 @@
 
   let allSignals = [];
   let activeSignalFilter = "ALL";
+  let activeStatusFilter = "ALL";
   let activeTfFilter = "ALL";
   let symbolQuery = "";
 
-  function fmtTime(iso) {
+  // Default the date filter to today (IST) so the feed opens on the
+  // freshest data; the backend never deletes history, so widening this
+  // reaches back to any earlier date.
+  function todayIST() {
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    return now.toISOString().slice(0, 10);
+  }
+  document.getElementById('dateFrom').value = todayIST();
+
+  function fmtExactTime(iso) {
     if (!iso) return "—";
     const d = new Date(iso);
-    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleString('en-IN', {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
   }
 
   function timeAgo(iso) {
@@ -377,8 +489,16 @@
     if (diff < 5) return "just now";
     if (diff < 60) return diff + "s ago";
     if (diff < 3600) return Math.floor(diff / 60) + "m ago";
-    return Math.floor(diff / 3600) + "h ago";
+    if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+    return Math.floor(diff / 86400) + "d ago";
   }
+
+  const STATUS_LABELS = {
+    open: "LIVE",
+    target_hit: "TARGET HIT",
+    stoploss_hit: "STOP-LOSS HIT",
+    eod_close: "EOD CLOSE",
+  };
 
   async function fetchHealth() {
     try {
@@ -407,67 +527,118 @@
 
   async function fetchSignals() {
     try {
-      const res = await fetch(`${API_BASE}/signals?limit=100`);
+      const dateFrom = document.getElementById('dateFrom').value;
+      const params = new URLSearchParams({ limit: '300' });
+      if (dateFrom) params.set('date_from', dateFrom);
+      const res = await fetch(`${API_BASE}/history?${params.toString()}`);
       const data = await res.json();
       allSignals = Array.isArray(data) ? data : [];
       renderStats();
       renderFeed();
     } catch (e) {
       document.getElementById('feedContainer').innerHTML =
-        `<div class="error-state">Couldn't load signals. Check that the backend is reachable and CORS is enabled.</div>`;
+        `<div class="error-state">Couldn't load signal history. Check that the backend is reachable and CORS is enabled.</div>`;
     }
   }
 
+  function filteredSignals() {
+    return allSignals.filter(s => {
+      if (activeSignalFilter !== "ALL" && s.signal_type !== activeSignalFilter) return false;
+      if (activeStatusFilter === "open" && s.status !== "open") return false;
+      if (activeStatusFilter === "closed" && s.status !== "closed") return false;
+      if (activeTfFilter !== "ALL" && s.timeframe !== activeTfFilter) return false;
+      if (symbolQuery && !(s.trading_symbol || "").toLowerCase().includes(symbolQuery.toLowerCase())) return false;
+      return true;
+    });
+  }
+
   function renderStats() {
-    const buys = allSignals.filter(s => s.signal === "BUY").length;
-    const sells = allSignals.filter(s => s.signal === "SELL").length;
-    document.getElementById('statBuy').textContent = buys;
-    document.getElementById('statSell').textContent = sells;
-  }
+    const buys = allSignals.filter(s => s.signal_type === "BUY").length;
+    const sells = allSignals.filter(s => s.signal_type === "SELL").length;
+    document.getElementById('statCount').textContent = allSignals.length;
+    document.getElementById('statBuySell').textContent = `${buys} buy · ${sells} sell`;
 
-  function symbolFromInstrumentId(id) {
-    return id ? id.slice(0, 8).toUpperCase() : "—";
-  }
-
-  function displaySymbol(s) {
-    // Prefer the real symbol enriched by the backend; fall back to a shortened UUID.
-    if (s.symbol) return s.symbol.replace(/-EQ$/, "");
-    return symbolFromInstrumentId(s.instrument_id);
+    const closed = allSignals.filter(s => s.status === "closed" && s.pnl_amount != null);
+    const netPnl = closed.reduce((sum, s) => sum + Number(s.pnl_amount), 0);
+    const pnlEl = document.getElementById('statPnl');
+    pnlEl.textContent = closed.length
+      ? `₹${netPnl.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+      : "—";
+    pnlEl.className = "stat-value " + (netPnl > 0 ? "pos" : netPnl < 0 ? "neg" : "");
   }
 
   function renderFeed() {
-    let filtered = allSignals.filter(s => {
-      if (activeSignalFilter !== "ALL" && s.signal !== activeSignalFilter) return false;
-      if (activeTfFilter !== "ALL" && s.timeframe !== activeTfFilter) return false;
-      if (symbolQuery && !(s.symbol || s.instrument_id || "").toLowerCase().includes(symbolQuery.toLowerCase())) return false;
-      return true;
-    });
-
-    filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const filtered = filteredSignals();
+    filtered.sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
 
     document.getElementById('feedCount').textContent = `${filtered.length} shown`;
 
     const container = document.getElementById('feedContainer');
 
     if (filtered.length === 0) {
-      container.innerHTML = `<div class="empty-state">No signals match these filters yet. Signals appear here the moment a candle closes with a crossover.</div>`;
+      container.innerHTML = `<div class="empty-state">No signals match these filters yet.</div>`;
       return;
     }
 
-    container.innerHTML = `<div class="signal-list">` + filtered.map(s => `
+    container.innerHTML = `<div class="signal-list">` + filtered.map(s => {
+      const pnlKnown = s.pnl_amount !== null && s.pnl_amount !== undefined;
+      const pnlClass = pnlKnown ? (Number(s.pnl_amount) >= 0 ? "pos" : "neg") : "";
+      const statusTag = STATUS_LABELS[s.status === "open" ? "open" : s.exit_reason] || s.status;
+      const statusClass = s.status === "open" ? "open" : (s.exit_reason || "");
+
+      return `
       <div class="signal-row">
-        <div class="sig-badge ${s.signal === 'BUY' ? 'buy' : 'sell'}">${s.signal}</div>
+        <div class="sig-badge ${s.signal_type === 'BUY' ? 'buy' : 'sell'}">${s.signal_type}</div>
         <div>
-          <div class="sig-symbol">${displaySymbol(s)}</div>
-          <div class="sig-sub">${s.previous_relationship} → ${s.new_relationship}</div>
+          <div class="sig-symbol" data-symbol="${s.trading_symbol}">${s.trading_symbol}</div>
+          <div class="sig-sub">${s.indicator} · ${s.name || ''}</div>
         </div>
-        <div class="sig-price">₹${Number(s.price).toFixed(2)}</div>
-        <div class="sig-indicator">${s.indicator}</div>
-        <div class="sig-tf">${s.timeframe}</div>
-        <div class="sig-time">${fmtTime(s.created_at)}</div>
+        <div class="sig-entry">
+          ₹${Number(s.entry_price).toFixed(2)}
+          <div class="sig-sub">entry</div>
+        </div>
+        <div class="sig-levels">
+          <div class="sl">SL ₹${s.stop_loss != null ? Number(s.stop_loss).toFixed(2) : '—'}</div>
+          <div class="tp">TP ₹${s.target_profit != null ? Number(s.target_profit).toFixed(2) : '—'}</div>
+        </div>
+        <div class="sig-pnl ${pnlClass}">
+          ${pnlKnown ? '₹' + Number(s.pnl_amount).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
+          <div class="sig-sub"><span class="status-tag ${statusClass}">${statusTag}</span></div>
+        </div>
+        <div class="sig-tf" style="text-align:center;color:var(--amber);font-size:11px;">${s.timeframe}</div>
+        <div class="sig-time">
+          <div class="exact">${fmtExactTime(s.generated_at)}</div>
+          <div class="ago">${timeAgo(s.generated_at)}</div>
+        </div>
       </div>
-    `).join('') + `</div>`;
+    `;
+    }).join('') + `</div>`;
   }
+
+  // ---- TradingView / NSE chart-open modal ----
+  const chartModal = document.getElementById('chartModal');
+  let selectedSymbol = null;
+
+  document.getElementById('feedContainer').addEventListener('click', e => {
+    const target = e.target.closest('.sig-symbol');
+    if (!target) return;
+    selectedSymbol = target.dataset.symbol;
+    document.getElementById('modalSymbol').textContent = selectedSymbol;
+    chartModal.classList.add('show');
+  });
+
+  document.getElementById('openTradingView').addEventListener('click', () => {
+    if (selectedSymbol) window.open(`https://www.tradingview.com/chart/?symbol=NSE:${selectedSymbol}`, '_blank');
+    chartModal.classList.remove('show');
+  });
+
+  document.getElementById('openNSE').addEventListener('click', () => {
+    if (selectedSymbol) window.open(`https://www.nseindia.com/get-quotes/equity?symbol=${selectedSymbol}`, '_blank');
+    chartModal.classList.remove('show');
+  });
+
+  document.getElementById('closeModal').addEventListener('click', () => chartModal.classList.remove('show'));
+  chartModal.addEventListener('click', e => { if (e.target === chartModal) chartModal.classList.remove('show'); });
 
   // ---- Filter wiring ----
   document.getElementById('signalFilter').addEventListener('click', e => {
@@ -476,6 +647,15 @@
     document.querySelectorAll('#signalFilter .chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     activeSignalFilter = chip.dataset.signal;
+    renderFeed();
+  });
+
+  document.getElementById('statusFilter').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    document.querySelectorAll('#statusFilter .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    activeStatusFilter = chip.dataset.status;
     renderFeed();
   });
 
@@ -492,6 +672,8 @@
     symbolQuery = e.target.value;
     renderFeed();
   });
+
+  document.getElementById('dateFrom').addEventListener('change', () => fetchSignals());
 
   // ---- Boot ----
   function refresh() {
