@@ -6,6 +6,7 @@
 <title>Signal Desk — Stock Market Signal App</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root {
     --bg: #0B1220;
@@ -37,7 +38,8 @@
     padding: 24px 20px 60px;
   }
 
-  .wrap { max-width: 1180px; margin: 0 auto; }
+  .wrap { max-width: 1400px; margin: 0 auto; display: flex; gap: 24px; align-items: flex-start; }
+  .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: calc(100vh - 84px); }
 
   /* ---------- Header ---------- */
   header {
@@ -103,12 +105,15 @@
 
   .status-pill strong { color: var(--text-primary); font-weight: 600; }
 
-  /* ---------- Stat cards ---------- */
+  /* ---------- Stat cards (left sidebar) ---------- */
   .stats {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    display: flex;
+    flex-direction: column;
     gap: 12px;
-    margin-bottom: 28px;
+    width: 190px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 24px;
   }
 
   .stat-card {
@@ -137,6 +142,18 @@
   .stat-value.pos { color: var(--green); }
   .stat-value.neg { color: var(--red); }
 
+  .stat-card-btn {
+    width: 100%;
+    text-align: left;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .stat-card-btn:hover { background: var(--bg-panel-hover); border-color: var(--amber); }
+  .stat-card-btn .stat-label { color: var(--amber); }
+  .stat-card-btn:disabled { opacity: 0.6; cursor: default; }
+
   /* ---------- Filters ---------- */
   .filters {
     display: flex;
@@ -146,6 +163,14 @@
   }
 
   .filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .tf-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .tf-box .filter-group { justify-content: center; }
 
   .chip {
     background: var(--bg-panel);
@@ -293,7 +318,8 @@
   .error-state { color: var(--red); }
 
   footer {
-    margin-top: 32px;
+    margin-top: auto;
+    padding-top: 32px;
     text-align: center;
     font-size: 11px;
     color: var(--text-dim);
@@ -357,8 +383,15 @@
     .sig-levels, .sig-pnl .sig-sub, .sig-time .ago { text-align: left; }
   }
 
-  @media (max-width: 720px) {
-    .stats { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 900px) {
+    .wrap { flex-direction: column; }
+    .stats {
+      flex-direction: row;
+      width: 100%;
+      flex-wrap: wrap;
+      position: static;
+    }
+    .stat-card { flex: 1 1 calc(50% - 6px); }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -374,17 +407,6 @@
 </head>
 <body>
   <div class="wrap">
-    <header>
-      <div>
-        <div class="brand-eyebrow">NIFTY 100 · MIDCAP 100 · SMALLCAP 100</div>
-        <h1>Signal Desk</h1>
-      </div>
-      <div class="status-pill" id="statusPill">
-        <div class="dot" id="statusDot"></div>
-        <span id="statusText">Connecting…</span>
-      </div>
-    </header>
-
     <div class="stats">
       <div class="stat-card">
         <div class="stat-label">Instruments tracked</div>
@@ -403,7 +425,37 @@
         <div class="stat-label">Net P&amp;L (Rs 1L / signal)</div>
         <div class="stat-value" id="statPnl">—</div>
       </div>
+      <div class="tf-box">
+        <div class="filter-group" id="tfFilter">
+          <div class="chip active" data-tf="ALL">All timeframes</div>
+          <div class="chip" data-tf="5m">5m</div>
+          <div class="chip" data-tf="15m">15m</div>
+          <div class="chip" data-tf="30m">30m</div>
+          <div class="chip" data-tf="1h">1h</div>
+          <div class="chip" data-tf="4h">4h</div>
+          <div class="chip" data-tf="1d">1d</div>
+        </div>
+      </div>
+      <button class="stat-card stat-card-btn" id="exportExcelBtn">
+        <div class="stat-label">⬇ Export Daily P&amp;L</div>
+        <div class="stat-value" style="font-size:14px;">Date range</div>
+      </button>
     </div>
+
+    <div class="main-col">
+    <header>
+      <div>
+        <div class="brand-eyebrow">NIFTY 100 · MIDCAP 100 · SMALLCAP 100</div>
+        <h1>Signal Desk</h1>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+        <div style="font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-dim);">Built by Sarath Sreekumar</div>
+        <div class="status-pill" id="statusPill">
+          <div class="dot" id="statusDot"></div>
+          <span id="statusText">Connecting…</span>
+        </div>
+      </div>
+    </header>
 
     <div class="filters">
       <div class="filter-group" id="signalFilter">
@@ -416,16 +468,8 @@
         <div class="chip" data-status="open">Live (open)</div>
         <div class="chip" data-status="closed">Closed</div>
       </div>
-      <div class="filter-group" id="tfFilter">
-        <div class="chip active" data-tf="ALL">All timeframes</div>
-        <div class="chip" data-tf="5m">5m</div>
-        <div class="chip" data-tf="15m">15m</div>
-        <div class="chip" data-tf="30m">30m</div>
-        <div class="chip" data-tf="1h">1h</div>
-        <div class="chip" data-tf="4h">4h</div>
-        <div class="chip" data-tf="1d">1d</div>
-      </div>
       <input type="date" class="date-input" id="dateFrom" title="From date">
+      <input type="date" class="date-input" id="dateTo" title="To date (leave blank for today)">
       <input class="search-input" id="symbolSearch" placeholder="Filter by symbol…">
     </div>
 
@@ -439,6 +483,8 @@
     </div>
 
     <footer id="footerNote">Refreshes every 15s · Backend: <span id="apiBaseLabel"></span></footer>
+    </div>
+  </div>
   </div>
 
   <div class="modal-backdrop" id="chartModal">
@@ -528,8 +574,10 @@
   async function fetchSignals() {
     try {
       const dateFrom = document.getElementById('dateFrom').value;
+      const dateTo = document.getElementById('dateTo').value;
       const params = new URLSearchParams({ limit: '300' });
       if (dateFrom) params.set('date_from', dateFrom);
+      if (dateTo) params.set('date_to', dateTo);
       const res = await fetch(`${API_BASE}/history?${params.toString()}`);
       const data = await res.json();
       allSignals = Array.isArray(data) ? data : [];
@@ -674,6 +722,134 @@
   });
 
   document.getElementById('dateFrom').addEventListener('change', () => fetchSignals());
+  document.getElementById('dateTo').addEventListener('change', () => fetchSignals());
+
+  // ---- Excel export: full date-range daily P&L, independent of the ----
+  // ---- 300-row cap on the on-screen feed. Pages through /history in ----
+  // ---- 1000-row chunks (the backend's max per call) until everything ----
+  // ---- in the range has been pulled, then groups it day-wise.        ----
+  async function fetchFullRange(dateFrom, dateTo) {
+    const all = [];
+    const pageSize = 1000;
+    let offset = 0;
+    while (true) {
+      const params = new URLSearchParams({ limit: String(pageSize), offset: String(offset) });
+      if (dateFrom) params.set('date_from', dateFrom);
+      if (dateTo) params.set('date_to', dateTo);
+      const res = await fetch(`${API_BASE}/history?${params.toString()}`);
+      if (!res.ok) throw new Error(`Backend returned ${res.status}`);
+      const page = await res.json();
+      all.push(...page);
+      if (page.length < pageSize) break;
+      offset += pageSize;
+    }
+    return all;
+  }
+
+  document.getElementById('exportExcelBtn').addEventListener('click', async () => {
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value || todayIST();
+
+    if (!dateFrom) {
+      alert("Pick a \"From\" date first (top-left date field) — that's the start of the range you want to export. \"To\" defaults to today if left blank.");
+      return;
+    }
+
+    const btn = document.getElementById('exportExcelBtn');
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = `<div class="stat-label">⬇ Fetching…</div><div class="stat-value" style="font-size:14px;">Please wait</div>`;
+    btn.disabled = true;
+
+    let rows;
+    try {
+      rows = await fetchFullRange(dateFrom, dateTo);
+    } catch (e) {
+      alert("Couldn't fetch the full date range from the backend. Check it's reachable and try again.");
+      btn.innerHTML = originalHTML;
+      btn.disabled = false;
+      return;
+    }
+    btn.innerHTML = originalHTML;
+    btn.disabled = false;
+
+    if (rows.length === 0) {
+      alert(`No signals found between ${dateFrom} and ${dateTo}.`);
+      return;
+    }
+
+    // Sheet 1: one row per trading day across the whole requested range.
+    const byDate = {};
+    rows.forEach(s => {
+      const day = s.generated_date || (s.generated_at || "").slice(0, 10);
+      if (!day) return;
+      if (!byDate[day]) {
+        byDate[day] = { date: day, total: 0, buy: 0, sell: 0, closed: 0, open: 0, targetHit: 0, stoplossHit: 0, eodClose: 0, netPnl: 0 };
+      }
+      const d = byDate[day];
+      d.total += 1;
+      if (s.signal_type === "BUY") d.buy += 1;
+      if (s.signal_type === "SELL") d.sell += 1;
+      if (s.status === "open") d.open += 1;
+      if (s.status === "closed") {
+        d.closed += 1;
+        if (s.exit_reason === "target_hit") d.targetHit += 1;
+        if (s.exit_reason === "stoploss_hit") d.stoplossHit += 1;
+        if (s.exit_reason === "eod_close") d.eodClose += 1;
+        if (s.pnl_amount != null) d.netPnl += Number(s.pnl_amount);
+      }
+    });
+    const summaryRows = Object.values(byDate)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(d => ({
+        "Date": d.date,
+        "Total Signals": d.total,
+        "Buy": d.buy,
+        "Sell": d.sell,
+        "Open (Live)": d.open,
+        "Closed": d.closed,
+        "Target Hit": d.targetHit,
+        "Stop-Loss Hit": d.stoplossHit,
+        "EOD Close": d.eodClose,
+        "Net P&L (Rs)": Math.round(d.netPnl * 100) / 100,
+      }));
+
+    // Running-total row at the bottom of the summary for the whole range.
+    const rangeTotal = summaryRows.reduce((sum, r) => sum + r["Net P&L (Rs)"], 0);
+    summaryRows.push({
+      "Date": `TOTAL (${dateFrom} to ${dateTo})`,
+      "Total Signals": rows.length, "Buy": "", "Sell": "", "Open (Live)": "", "Closed": "",
+      "Target Hit": "", "Stop-Loss Hit": "", "EOD Close": "",
+      "Net P&L (Rs)": Math.round(rangeTotal * 100) / 100,
+    });
+
+    // Sheet 2: full per-signal detail backing the summary, sorted oldest first.
+    const detailRows = [...rows]
+      .sort((a, b) => new Date(a.generated_at) - new Date(b.generated_at))
+      .map(s => ({
+        "Date": s.generated_date || (s.generated_at || "").slice(0, 10),
+        "Generated At": fmtExactTime(s.generated_at),
+        "Symbol": s.trading_symbol,
+        "Name": s.name || "",
+        "Signal": s.signal_type,
+        "Indicator": s.indicator,
+        "Timeframe": s.timeframe,
+        "Entry Price": s.entry_price,
+        "Stop Loss": s.stop_loss,
+        "Target Profit": s.target_profit,
+        "Investment (Rs)": s.investment_amount,
+        "Status": s.status,
+        "Exit Reason": s.exit_reason || "",
+        "Exit Price": s.exit_price ?? "",
+        "P&L (Rs)": s.pnl_amount ?? "",
+        "P&L (%)": s.pnl_percent ?? "",
+      }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Daily P&L Summary");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), "Signal Detail");
+
+    XLSX.writeFile(wb, `SignalDesk_PnL_${dateFrom}_to_${dateTo}.xlsx`);
+  });
 
   // ---- Boot ----
   function refresh() {
