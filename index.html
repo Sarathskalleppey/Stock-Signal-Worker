@@ -374,6 +374,68 @@
   .modal-btn.cancel { color: var(--text-dim); margin-top: 4px; }
   .modal-btn.cancel:hover { border-color: var(--text-dim); color: var(--text-secondary); }
 
+  /* ---------- Market movers modal ---------- */
+  .movers-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    max-width: 560px;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .movers-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .movers-title {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .movers-close {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    width: 28px; height: 28px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .movers-close:hover { color: var(--text-primary); border-color: var(--text-dim); }
+  .movers-sort {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .movers-list {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .movers-row {
+    display: grid;
+    grid-template-columns: 1fr 90px 90px;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-panel);
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+  .movers-row .m-symbol { font-weight: 600; }
+  .movers-row .m-name { color: var(--text-dim); font-size: 10.5px; }
+  .movers-row .m-ltp { text-align: right; }
+  .movers-row .m-change { text-align: right; font-weight: 600; }
+  .movers-empty { padding: 40px 20px; text-align: center; color: var(--text-dim); font-size: 13px; }
+
   @media (max-width: 900px) {
     .signal-row {
       grid-template-columns: 1fr;
@@ -445,7 +507,7 @@
     <div class="main-col">
     <header>
       <div>
-        <div class="brand-eyebrow">NIFTY 100 · MIDCAP 100 · SMALLCAP 100</div>
+        <div class="brand-eyebrow" id="moversTrigger" style="cursor:pointer; text-decoration: underline dotted; text-underline-offset: 3px;">NIFTY 100 · MIDCAP 100 · SMALLCAP 100</div>
         <h1>Signal Desk</h1>
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
@@ -495,6 +557,22 @@
         <button class="modal-btn" id="openTradingView">TradingView</button>
         <button class="modal-btn" id="openNSE">NSE Website</button>
         <button class="modal-btn cancel" id="closeModal">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="moversModal">
+    <div class="movers-box">
+      <div class="movers-header">
+        <div class="movers-title">All 300 Stocks — Day Gain/Loss</div>
+        <button class="movers-close" id="closeMovers">✕</button>
+      </div>
+      <div class="movers-sort">
+        <div class="chip active" id="sortGain">↓ Gain (top to bottom)</div>
+        <div class="chip" id="sortLoss">↑ Loss (top to bottom)</div>
+      </div>
+      <div class="movers-list" id="moversList">
+        <div class="movers-empty">Loading…</div>
       </div>
     </div>
   </div>
@@ -687,6 +765,61 @@
 
   document.getElementById('closeModal').addEventListener('click', () => chartModal.classList.remove('show'));
   chartModal.addEventListener('click', e => { if (e.target === chartModal) chartModal.classList.remove('show'); });
+
+  // ---- Market movers modal (all 300, sortable by gain/loss) ----
+  const moversModal = document.getElementById('moversModal');
+  const moversList = document.getElementById('moversList');
+  let moversData = [];
+  let moversSort = 'gain'; // 'gain' = highest first, 'loss' = lowest first
+
+  function renderMovers() {
+    if (moversData.length === 0) {
+      moversList.innerHTML = `<div class="movers-empty">No live price data yet — this needs at least one tick per stock since market open today.</div>`;
+      return;
+    }
+    const sorted = [...moversData].sort((a, b) =>
+      moversSort === 'gain' ? b.change_percent - a.change_percent : a.change_percent - b.change_percent
+    );
+    moversList.innerHTML = sorted.map(s => `
+      <div class="movers-row">
+        <div>
+          <div class="m-symbol">${s.symbol}</div>
+          <div class="m-name">${s.name || ''}</div>
+        </div>
+        <div class="m-ltp">₹${Number(s.ltp).toFixed(2)}</div>
+        <div class="m-change" style="color:${s.change_percent >= 0 ? 'var(--green)' : 'var(--red)'}">${s.change_percent >= 0 ? '+' : ''}${s.change_percent.toFixed(2)}%</div>
+      </div>
+    `).join('');
+  }
+
+  async function openMovers() {
+    moversModal.classList.add('show');
+    moversList.innerHTML = `<div class="movers-empty">Loading…</div>`;
+    try {
+      const res = await fetch(`${API_BASE}/market-movers`);
+      moversData = await res.json();
+      renderMovers();
+    } catch (e) {
+      moversList.innerHTML = `<div class="movers-empty">Couldn't load live prices. Check the backend is reachable.</div>`;
+    }
+  }
+
+  document.getElementById('moversTrigger').addEventListener('click', openMovers);
+  document.getElementById('closeMovers').addEventListener('click', () => moversModal.classList.remove('show'));
+  moversModal.addEventListener('click', e => { if (e.target === moversModal) moversModal.classList.remove('show'); });
+
+  document.getElementById('sortGain').addEventListener('click', () => {
+    moversSort = 'gain';
+    document.getElementById('sortGain').classList.add('active');
+    document.getElementById('sortLoss').classList.remove('active');
+    renderMovers();
+  });
+  document.getElementById('sortLoss').addEventListener('click', () => {
+    moversSort = 'loss';
+    document.getElementById('sortLoss').classList.add('active');
+    document.getElementById('sortGain').classList.remove('active');
+    renderMovers();
+  });
 
   // ---- Filter wiring ----
   document.getElementById('signalFilter').addEventListener('click', e => {
