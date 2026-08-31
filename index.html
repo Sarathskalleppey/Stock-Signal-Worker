@@ -337,43 +337,6 @@
   }
   .modal-backdrop.show { display: flex; }
 
-  .modal-box {
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
-    width: 100%;
-    max-width: 340px;
-    text-align: center;
-  }
-  .modal-symbol {
-    font-family: var(--font-display);
-    font-size: 18px;
-    font-weight: 700;
-    margin-bottom: 4px;
-  }
-  .modal-hint {
-    font-size: 12px;
-    color: var(--text-dim);
-    margin-bottom: 20px;
-  }
-  .modal-buttons { display: flex; flex-direction: column; gap: 10px; }
-  .modal-btn {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    font-weight: 600;
-    padding: 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .modal-btn:hover { border-color: var(--amber); color: var(--amber); }
-  .modal-btn.cancel { color: var(--text-dim); margin-top: 4px; }
-  .modal-btn.cancel:hover { border-color: var(--text-dim); color: var(--text-secondary); }
-
   /* ---------- Market movers modal ---------- */
   .movers-box {
     background: var(--bg-panel);
@@ -429,11 +392,28 @@
     background: var(--bg-panel);
     padding: 10px 14px;
     font-size: 12px;
+    cursor: pointer;
+    transition: background 0.1s ease;
   }
+  .movers-row:hover { background: rgba(255,255,255,0.03); }
+  .movers-row.has-signal { background: rgba(255, 176, 32, 0.06); }
   .movers-row .m-symbol { font-weight: 600; }
   .movers-row .m-name { color: var(--text-dim); font-size: 10.5px; }
   .movers-row .m-ltp { text-align: right; }
   .movers-row .m-change { text-align: right; font-weight: 600; }
+  .movers-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .movers-badge.buy { background: rgba(46, 204, 113, 0.15); color: var(--green); }
+  .movers-badge.sell { background: rgba(231, 76, 60, 0.15); color: var(--red); }
   .movers-empty { padding: 40px 20px; text-align: center; color: var(--text-dim); font-size: 13px; }
 
   @media (max-width: 900px) {
@@ -492,8 +472,6 @@
           <div class="chip active" data-tf="ALL">All timeframes</div>
           <div class="chip" data-tf="5m">5m</div>
           <div class="chip" data-tf="15m">15m</div>
-          <div class="chip" data-tf="30m">30m</div>
-          <div class="chip" data-tf="1h">1h</div>
           <div class="chip" data-tf="4h">4h</div>
           <div class="chip" data-tf="1d">1d</div>
         </div>
@@ -549,22 +527,10 @@
   </div>
   </div>
 
-  <div class="modal-backdrop" id="chartModal">
-    <div class="modal-box">
-      <div class="modal-symbol" id="modalSymbol">SYMBOL</div>
-      <div class="modal-hint">Open this stock's chart in:</div>
-      <div class="modal-buttons">
-        <button class="modal-btn" id="openTradingView">TradingView</button>
-        <button class="modal-btn" id="openNSE">NSE Website</button>
-        <button class="modal-btn cancel" id="closeModal">Cancel</button>
-      </div>
-    </div>
-  </div>
-
   <div class="modal-backdrop" id="moversModal">
     <div class="movers-box">
       <div class="movers-header">
-        <div class="movers-title">All 300 Stocks — Day Gain/Loss</div>
+        <div class="movers-title">All 300 Stocks — Signals First, Then Day Gain/Loss</div>
         <button class="movers-close" id="closeMovers">✕</button>
       </div>
       <div class="movers-sort">
@@ -741,32 +707,20 @@
     }).join('') + `</div>`;
   }
 
-  // ---- TradingView / NSE chart-open modal ----
-  const chartModal = document.getElementById('chartModal');
-  let selectedSymbol = null;
+  // ---- Every stock symbol opens straight into TradingView, no prompt ----
+  function openTradingView(symbol) {
+    if (!symbol) return;
+    window.open(`https://www.tradingview.com/chart/?symbol=NSE:${symbol}`, '_blank');
+  }
 
   document.getElementById('feedContainer').addEventListener('click', e => {
     const target = e.target.closest('.sig-symbol');
     if (!target) return;
-    selectedSymbol = target.dataset.symbol;
-    document.getElementById('modalSymbol').textContent = selectedSymbol;
-    chartModal.classList.add('show');
+    openTradingView(target.dataset.symbol);
   });
 
-  document.getElementById('openTradingView').addEventListener('click', () => {
-    if (selectedSymbol) window.open(`https://www.tradingview.com/chart/?symbol=NSE:${selectedSymbol}`, '_blank');
-    chartModal.classList.remove('show');
-  });
-
-  document.getElementById('openNSE').addEventListener('click', () => {
-    if (selectedSymbol) window.open(`https://www.nseindia.com/get-quotes/equity?symbol=${selectedSymbol}`, '_blank');
-    chartModal.classList.remove('show');
-  });
-
-  document.getElementById('closeModal').addEventListener('click', () => chartModal.classList.remove('show'));
-  chartModal.addEventListener('click', e => { if (e.target === chartModal) chartModal.classList.remove('show'); });
-
-  // ---- Market movers modal (all 300, sortable by gain/loss) ----
+  // ---- Market movers modal (all 300: signal-triggered stocks first, then
+  // sorted by gain/loss; every row opens straight into TradingView) ----
   const moversModal = document.getElementById('moversModal');
   const moversList = document.getElementById('moversList');
   let moversData = [];
@@ -777,19 +731,31 @@
       moversList.innerHTML = `<div class="movers-empty">No live price data yet — this needs at least one tick per stock since market open today.</div>`;
       return;
     }
-    const sorted = [...moversData].sort((a, b) =>
-      moversSort === 'gain' ? b.change_percent - a.change_percent : a.change_percent - b.change_percent
-    );
-    moversList.innerHTML = sorted.map(s => `
-      <div class="movers-row">
+    const dir = moversSort === 'gain' ? -1 : 1;
+    const byChange = (a, b) => dir * (a.change_percent - b.change_percent);
+
+    // Signal-triggered stocks always come first (as their own group,
+    // sorted the same gain/loss way), then everything else.
+    const signalled = moversData.filter(s => s.active_signal).sort(byChange);
+    const rest = moversData.filter(s => !s.active_signal).sort(byChange);
+    const sorted = [...signalled, ...rest];
+
+    moversList.innerHTML = sorted.map(s => {
+      const sig = s.active_signal;
+      const badge = sig
+        ? `<span class="movers-badge ${sig.signal_type === 'BUY' ? 'buy' : 'sell'}">${sig.signal_type} · ${sig.timeframe}</span>`
+        : '';
+      return `
+      <div class="movers-row ${sig ? 'has-signal' : ''}" data-symbol="${s.symbol}">
         <div>
-          <div class="m-symbol">${s.symbol}</div>
+          <div class="m-symbol">${s.symbol}${badge}</div>
           <div class="m-name">${s.name || ''}</div>
         </div>
         <div class="m-ltp">₹${Number(s.ltp).toFixed(2)}</div>
         <div class="m-change" style="color:${s.change_percent >= 0 ? 'var(--green)' : 'var(--red)'}">${s.change_percent >= 0 ? '+' : ''}${s.change_percent.toFixed(2)}%</div>
       </div>
-    `).join('');
+    `;
+    }).join('');
   }
 
   async function openMovers() {
@@ -806,7 +772,11 @@
 
   document.getElementById('moversTrigger').addEventListener('click', openMovers);
   document.getElementById('closeMovers').addEventListener('click', () => moversModal.classList.remove('show'));
-  moversModal.addEventListener('click', e => { if (e.target === moversModal) moversModal.classList.remove('show'); });
+  moversModal.addEventListener('click', e => {
+    if (e.target === moversModal) { moversModal.classList.remove('show'); return; }
+    const row = e.target.closest('.movers-row');
+    if (row) openTradingView(row.dataset.symbol);
+  });
 
   document.getElementById('sortGain').addEventListener('click', () => {
     moversSort = 'gain';
