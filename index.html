@@ -559,6 +559,14 @@
   table.accuracy-daily .sub { color: var(--text-dim); font-size: 9.5px; }
 
   /* ---------- Live signal direction modal ---------- */
+  .direction-tf-title {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 16px 0 8px;
+  }
+  .direction-tf-summary { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
   .direction-lists {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -663,6 +671,7 @@
       <div class="stat-card">
         <div class="stat-label">Net P&amp;L (Rs 1L / signal)</div>
         <div class="stat-value" id="statPnl">—</div>
+        <div class="sig-sub">closed + live open, mark-to-market</div>
       </div>
       <button class="stat-card stat-card-btn" id="directionTrigger">
         <div class="stat-label">🎯 Live Signal Direction</div>
@@ -734,13 +743,15 @@
 
     <div id="directionTab" style="display:none;">
       <div class="accuracy-note" style="margin-bottom:14px;">
-        Every currently OPEN signal, compared to its live price right now. "In favor" = price has moved the way the
-        signal needs (up for BUY, down for SELL) since entry; "against" = the opposite. Click any stock to open its
-        chart. Uses today's full signal list, not just what's shown above. As of: <span id="directionAsOf">—</span>
+        Every currently OPEN signal, compared to its live price right now -- from any day, since a signal only
+        closes on its stop-loss or a target. "In favor" = price has moved the way the signal needs (up for BUY,
+        down for SELL) since entry; "against" = the opposite. Click any stock to open its chart. As of:
+        <span id="directionAsOf">—</span>
       </div>
       <div class="accuracy-summary" id="directionSummary">
         <div class="accuracy-empty">Loading…</div>
       </div>
+      <div id="directionTfBreakdown"></div>
       <div class="direction-lists" id="directionLists"></div>
     </div>
 
@@ -909,10 +920,13 @@
       const params = new URLSearchParams({ limit: '300' });
       if (dateFrom) params.set('date_from', dateFrom);
       if (dateTo) params.set('date_to', dateTo);
-      const res = await fetch(`${API_BASE}/history?${params.toString()}`);
+      const [res, moversBySymbol] = await Promise.all([
+        fetch(`${API_BASE}/history?${params.toString()}`),
+        fetchMoversBySymbol(),
+      ]);
       const data = await res.json();
       allSignals = Array.isArray(data) ? data : [];
-      renderStats();
+      renderStats(moversBySymbol);
       renderFeed();
     } catch (e) {
       document.getElementById('feedContainer').innerHTML =
@@ -945,7 +959,24 @@
     });
   }
 
-  function renderStats() {
+  // A still-open signal has no pnl_amount yet, but it does have a live
+  // mark-to-market value: whatever's already realized from earlier partial
+  // target exits, plus the unrealized move on whatever quantity remains,
+  // priced at the current LTP. Net P&L below is just the sum of that
+  // (favorable minus unfavorable, in rupees) across every open signal,
+  // added to the already-closed total -- one net number, live.
+  function provisionalPnl(s, moversBySymbol) {
+    const m = moversBySymbol[s.trading_symbol];
+    if (!m || m.ltp == null) return 0;
+    const ltp = Number(m.ltp);
+    const entry = Number(s.entry_price);
+    const qtyRemaining = Number(s.quantity_remaining != null ? s.quantity_remaining : s.quantity || 0);
+    const realized = Number(s.realized_pnl_amount || 0);
+    const unrealized = s.signal_type === 'BUY' ? (ltp - entry) * qtyRemaining : (entry - ltp) * qtyRemaining;
+    return realized + unrealized;
+  }
+
+  function renderStats(moversBySymbol = {}) {
     const strongBuy = allSignals.filter(s => matchesSignalFilter(s, 'STRONG_BUY')).length;
     const buy = allSignals.filter(s => matchesSignalFilter(s, 'BUY')).length;
     const sell = allSignals.filter(s => matchesSignalFilter(s, 'SELL')).length;
@@ -955,9 +986,12 @@
       `🔥${strongBuy} buy · ${buy} buy · ${sell} sell · 🔥${strongSell} sell`;
 
     const closed = allSignals.filter(s => s.status === "closed" && s.pnl_amount != null);
-    const netPnl = closed.reduce((sum, s) => sum + Number(s.pnl_amount), 0);
+    const closedPnl = closed.reduce((sum, s) => sum + Number(s.pnl_amount), 0);
+    const open = allSignals.filter(s => s.status === "open");
+    const openPnl = open.reduce((sum, s) => sum + provisionalPnl(s, moversBySymbol), 0);
+    const netPnl = closedPnl + openPnl;
     const pnlEl = document.getElementById('statPnl');
-    pnlEl.textContent = closed.length
+    pnlEl.textContent = allSignals.length
       ? `₹${netPnl.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
       : "—";
     pnlEl.className = "stat-value " + (netPnl > 0 ? "pos" : netPnl < 0 ? "neg" : "");
@@ -1437,10 +1471,14 @@
   // ---- Live signal direction: every OPEN signal right now, compared to  ----
   // ---- its live price -- how many stocks have moved the way the signal  ----
   // ---- needs (in favor) vs the opposite (against), with the full list.  ----
-  // ---- Always today's full open-signal set (nothing stays open past     ----
-  // ---- EOD by design), independent of the main date filter.             ----
+  // ---- A signal only closes on its stop-loss or a target now (no EOD    ----
+  // ---- close), so this pulls every open signal regardless of which day  ----
+  // ---- it was generated on -- independent of the main date filter.      ----
+  const TF_ORDER = ['5m', '15m', '4h', '1d'];
+
   function computeDirection(openSignals, moversBySymbol) {
     const favor = [], against = [], unknown = [];
+    const byTf = {};
     openSignals.forEach(s => {
       const m = moversBySymbol[s.trading_symbol];
       if (!m || m.ltp == null) { unknown.push(s); return; }
@@ -1449,10 +1487,12 @@
       const pct = s.signal_type === 'BUY' ? (ltp - entry) / entry * 100 : (entry - ltp) / entry * 100;
       const item = { ...s, ltp, pct };
       (pct >= 0 ? favor : against).push(item);
+      if (!byTf[s.timeframe]) byTf[s.timeframe] = { favor: 0, against: 0 };
+      byTf[s.timeframe][pct >= 0 ? 'favor' : 'against'] += 1;
     });
     favor.sort((a, b) => b.pct - a.pct);
     against.sort((a, b) => a.pct - b.pct);  // worst (most against) first
-    return { favor, against, unknown };
+    return { favor, against, unknown, byTf };
   }
 
   function directionItemHtml(s) {
@@ -1464,7 +1504,26 @@
       </div>`;
   }
 
-  function renderDirection(favor, against, unknown) {
+  function renderTfBreakdown(byTf) {
+    const el = document.getElementById('directionTfBreakdown');
+    const tfs = TF_ORDER.filter(tf => byTf[tf]);
+    if (!tfs.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="direction-tf-title">Favorable vs unfavorable, by timeframe</div>` +
+      `<div class="accuracy-summary direction-tf-summary">` +
+      tfs.map(tf => {
+        const b = byTf[tf];
+        const total = b.favor + b.against;
+        return `
+        <div class="accuracy-period">
+          <div class="accuracy-period-title">${tf}</div>
+          <div class="accuracy-row pos"><span>Favorable</span><b>${b.favor}</b></div>
+          <div class="accuracy-row neg"><span>Unfavorable</span><b>${b.against}</b></div>
+          <div class="accuracy-row"><span>Favorable share</span><b>${total ? Math.round(b.favor / total * 100) : 0}%</b></div>
+        </div>`;
+      }).join('') + `</div>`;
+  }
+
+  function renderDirection(favor, against, unknown, byTf) {
     const summary = document.getElementById('directionSummary');
     const total = favor.length + against.length;
     summary.innerHTML = total === 0 ? `<div class="accuracy-empty">No open signals right now.</div>` : `
@@ -1478,6 +1537,7 @@
         <div class="accuracy-row neg"><span>Stocks</span><b>${against.length}</b></div>
         <div class="accuracy-row"><span>Share of open signals</span><b>${Math.round(against.length / total * 100)}%</b></div>
       </div>`;
+    renderTfBreakdown(byTf);
 
     const lists = document.getElementById('directionLists');
     lists.innerHTML = `
@@ -1492,20 +1552,27 @@
       (unknown.length ? `<div class="accuracy-note" style="grid-column:1/-1; margin-top:10px;">${unknown.length} open signal(s) skipped — no live price available for them right now.</div>` : '');
   }
 
+  // A signal only closes on its stop-loss or a target (no EOD close), so an
+  // "open" signal can be from any earlier day, not just today -- pull the
+  // open set directly rather than restricting to today's date range.
+  async function fetchOpenSignals() {
+    const res = await fetch(`${API_BASE}/history?status=open&date_from=2020-01-01&limit=1000`);
+    if (!res.ok) throw new Error(`Backend returned ${res.status}`);
+    return res.json();
+  }
+
   async function loadDirection() {
     document.getElementById('directionAsOf').textContent = fmtExactTime(new Date().toISOString());
     try {
-      const today = todayIST();
-      const [rows, moversRes] = await Promise.all([
-        fetchFullRange(today, today),
+      const [openSignals, moversRes] = await Promise.all([
+        fetchOpenSignals(),
         fetch(`${API_BASE}/market-movers`),
       ]);
       const movers = await moversRes.json();
-      const openSignals = rows.filter(s => s.status === 'open');
       const moversBySymbol = {};
       (Array.isArray(movers) ? movers : []).forEach(m => { moversBySymbol[m.symbol] = m; });
-      const { favor, against, unknown } = computeDirection(openSignals, moversBySymbol);
-      renderDirection(favor, against, unknown);
+      const { favor, against, unknown, byTf } = computeDirection(openSignals, moversBySymbol);
+      renderDirection(favor, against, unknown, byTf);
     } catch (e) {
       document.getElementById('directionSummary').innerHTML =
         `<div class="accuracy-empty">Couldn't load live prices. Check the backend is reachable.</div>`;
@@ -1525,6 +1592,7 @@
     document.getElementById('feedCount').style.display = tab === 'history' ? '' : 'none';
     if (tab === 'direction') {
       document.getElementById('directionSummary').innerHTML = `<div class="accuracy-empty">Loading…</div>`;
+      document.getElementById('directionTfBreakdown').innerHTML = '';
       document.getElementById('directionLists').innerHTML = '';
       loadDirection();
     }
