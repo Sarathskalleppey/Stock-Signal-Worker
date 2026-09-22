@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "info.signaledge.www.twa",
+      "sha256_cert_fingerprints": [
+        "BC:B2:63:EA:D8:C5:41:BC:84:1C:9E:9C:A4:D3:77:CF:5C:10:30:54:8C:8D:90:9F:30:8D:62:48:03:E3:C8:EF"
+      ]
+    }
+  }
+]
