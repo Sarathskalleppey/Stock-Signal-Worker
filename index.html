@@ -209,6 +209,37 @@
     letter-spacing: -0.01em;
   }
 
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .built-by {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  .mobile-menu-btn {
+    display: none;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    font-size: 16px;
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    cursor: pointer;
+    align-items: center; justify-content: center;
+  }
+  .mobile-menu-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+  .stats-close { display: none; }
+  .stats-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(4, 8, 16, 0.65);
+    z-index: 199;
+  }
+  .stats-backdrop.show { display: block; }
+
   .status-pill {
     display: flex;
     align-items: center;
@@ -836,19 +867,61 @@
     .strong-detail { grid-column: 1 / -1; }
   }
 
+  /* Mobile: stats become an off-canvas side panel opened via the hamburger
+     button, instead of sitting inline (previously either above everything
+     or, worse, buried below the entire 300-signal feed). */
   @media (max-width: 900px) {
     .wrap { flex-direction: column; }
     .main-col { order: 1; }
+    .mobile-menu-btn { display: flex; }
+
     .stats {
-      order: 2;
-      flex-direction: row;
-      width: 100%;
-      flex-wrap: wrap;
-      position: static;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      width: 82%; max-width: 320px;
+      flex-direction: column;
+      flex-wrap: nowrap;
       max-height: none;
-      overflow-y: visible;
+      overflow-y: auto;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      padding: 56px 14px 20px;
+      z-index: 200;
+      transform: translateX(-105%);
+      transition: transform 0.22s ease;
     }
-    .stat-card { flex: 1 1 calc(50% - 6px); }
+    .stats.open { transform: translateX(0); }
+    .stat-card { flex: 1 1 auto; }
+
+    .stats-close {
+      display: block;
+      position: absolute; top: 12px; right: 12px;
+      background: none; border: 1px solid var(--border); color: var(--text-dim);
+      border-radius: 6px; width: 30px; height: 30px; font-size: 14px; cursor: pointer;
+    }
+    .stats-close:hover { color: var(--text-primary); border-color: var(--text-dim); }
+
+    /* Header: eyebrow on its own row (with the menu button), title +
+       Live pill share the next row, built-by credit sits on its own row
+       right under the title -- .header-left/.header-right are "dissolved"
+       via display:contents so their children become direct flex items of
+       <header> and can be freely reordered/interleaved with each other. */
+    header { flex-wrap: wrap; align-items: center; gap: 8px 10px; padding-bottom: 14px; margin-bottom: 18px; }
+    .header-left, .header-right { display: contents; }
+    .mobile-menu-btn { order: 0; }
+    .brand-eyebrow { order: 1; flex: 1 1 auto; margin-bottom: 0; }
+    h1 { order: 2; font-size: 22px; }
+    .status-pill-wrap { order: 3; margin-left: auto; }
+    .built-by { order: 4; flex: 1 1 100%; text-align: left; }
+
+    /* Tighter filter chips/inputs so the whole control row wraps to far
+       fewer lines than the desktop sizing would. */
+    .filters { gap: 6px; margin-bottom: 14px; }
+    .filter-group { gap: 5px; }
+    .chip { padding: 5px 10px; font-size: 10.5px; }
+    .search-input, .date-input { padding: 5px 10px; font-size: 10.5px; min-width: 0; }
+    .date-input { width: calc(50% - 3px); }
+    .search-input { width: 100%; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -863,8 +936,10 @@
 </style>
 </head>
 <body>
+  <div class="stats-backdrop" id="statsBackdrop"></div>
   <div class="wrap">
-    <div class="stats">
+    <div class="stats" id="statsPanel">
+      <button class="stats-close" id="statsClose" aria-label="Close panel">✕</button>
       <div class="stat-card">
         <div class="stat-label">Instruments tracked</div>
         <div class="stat-value" id="statInstruments">—</div>
@@ -908,12 +983,13 @@
 
     <div class="main-col">
     <header>
-      <div>
+      <button class="mobile-menu-btn" id="mobileMenuBtn" title="Stats & tools" aria-label="Open stats panel">☰</button>
+      <div class="header-left">
         <div class="brand-eyebrow" id="moversTrigger" style="cursor:pointer; text-decoration: underline dotted; text-underline-offset: 3px;">NIFTY 100 · MIDCAP 100 · SMALLCAP 100</div>
         <h1>Signal Desk</h1>
       </div>
-      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
-        <div style="font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-dim);">Built by Sarath Sreekumar</div>
+      <div class="header-right">
+        <div class="built-by">Built by Sarath Sreekumar</div>
         <div class="status-pill-wrap">
           <div class="status-pill" id="statusPill">
             <button class="dot-btn" id="themeMenuTrigger" title="Click to change theme">
@@ -1122,6 +1198,19 @@
     try { saved = localStorage.getItem('signalDeskTheme') || ''; } catch (e) {}
     applyTheme(saved);
   })();
+
+  // ---- Mobile stats panel: the sidebar (Net P&L, Live Signal Direction,
+  // timeframe filter, Export, Accuracy) slides in from the left instead of
+  // sitting inline -- opened via the hamburger button next to the brand
+  // eyebrow, closed via its own close button or the backdrop. Desktop is
+  // untouched (the hamburger button is hidden there entirely). ----
+  function toggleStatsPanel(show) {
+    document.getElementById('statsPanel').classList.toggle('open', show);
+    document.getElementById('statsBackdrop').classList.toggle('show', show);
+  }
+  document.getElementById('mobileMenuBtn').addEventListener('click', () => toggleStatsPanel(true));
+  document.getElementById('statsClose').addEventListener('click', () => toggleStatsPanel(false));
+  document.getElementById('statsBackdrop').addEventListener('click', () => toggleStatsPanel(false));
 
   let allSignals = [];
   let lastMoversBySymbol = {};  // set on every fetchSignals() -- the live LTPs behind the Net P&L stat
