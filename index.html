@@ -944,6 +944,13 @@
       emaFastSeries.setData(data.ema_fast);
       emaSlowSeries.setData(data.ema_slow);
       chart.timeScale().fitContent();
+      // Lightweight Charts locks the price axis to a fixed range the moment
+      // a viewer drags/zooms it, and never re-fits on its own after that —
+      // so switching from a high-priced stock (e.g. HDFC ~780) to a low-
+      // priced one (e.g. a ~15 stock) left the old range in place and the
+      // new candles rendered off-screen ("blank"). Force it back to
+      // auto-fit on every open/switch, regardless of any prior manual zoom.
+      chart.priceScale('right').applyOptions({ autoScale: true });
 
       legend.innerHTML =
         `<span><b style="color:var(--amber)">●</b> EMA ${data.ema_fast_period}</span>` +
