@@ -564,12 +564,16 @@
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 2px 10px;
-    padding: 7px 0;
+    padding: 7px 4px;
     border-bottom: 1px solid var(--border);
     font-size: 11.5px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.1s ease;
   }
+  .direction-item:hover { background: rgba(255,255,255,0.04); }
   .direction-item:last-child { border-bottom: none; }
-  .direction-item .d-symbol { font-weight: 600; color: var(--text-primary); }
+  .direction-item .d-symbol { font-weight: 600; color: var(--text-primary); text-decoration: underline dotted var(--text-dim); text-underline-offset: 3px; }
   .direction-item .d-sub { color: var(--text-dim); font-size: 10px; grid-column: 1 / -1; }
   .direction-item .d-pct { text-align: right; font-weight: 700; align-self: center; }
   .direction-item .d-pct.pos { color: var(--green); }
@@ -692,12 +696,27 @@
     </div>
 
     <div class="feed-header">
-      <div class="feed-title">Signal History</div>
+      <div class="filter-group" id="mainTabFilter">
+        <div class="chip active" data-tab="history">Signal History</div>
+        <div class="chip" data-tab="direction">Live Direction</div>
+      </div>
       <div class="feed-count" id="feedCount"></div>
     </div>
 
     <div id="feedContainer">
       <div class="empty-state">Loading signals…</div>
+    </div>
+
+    <div id="directionTab" style="display:none;">
+      <div class="accuracy-note" style="margin-bottom:14px;">
+        Every currently OPEN signal, compared to its live price right now. "In favor" = price has moved the way the
+        signal needs (up for BUY, down for SELL) since entry; "against" = the opposite. Click any stock to open its
+        chart. Uses today's full signal list, not just what's shown above. As of: <span id="directionAsOf">—</span>
+      </div>
+      <div class="accuracy-summary" id="directionSummary">
+        <div class="accuracy-empty">Loading…</div>
+      </div>
+      <div class="direction-lists" id="directionLists"></div>
     </div>
 
     <footer id="footerNote">Refreshes every 15s · Backend: <span id="apiBaseLabel"></span></footer>
@@ -768,23 +787,6 @@
     </div>
   </div>
 
-  <div class="modal-backdrop" id="directionModal">
-    <div class="movers-box accuracy-box">
-      <div class="movers-header">
-        <div class="movers-title">Live Signal Direction — In Favor vs Against</div>
-        <button class="movers-close" id="closeDirection">✕</button>
-      </div>
-      <div class="accuracy-note">
-        Every currently OPEN signal, compared to its live price right now. "In favor" = price has moved
-        the way the signal needs (up for BUY, down for SELL) since entry; "against" = the opposite.
-        Uses today's full signal list, not just the 300 shown on screen. As of: <span id="directionAsOf">—</span>
-      </div>
-      <div class="accuracy-summary" id="directionSummary">
-        <div class="accuracy-empty">Loading…</div>
-      </div>
-      <div class="direction-lists" id="directionLists"></div>
-    </div>
-  </div>
 
 <script>
   // ---- Configure your backend URL here ----
@@ -1374,7 +1376,7 @@
 
   function directionItemHtml(s) {
     return `
-      <div class="direction-item">
+      <div class="direction-item" data-symbol="${s.trading_symbol}" data-tf="${s.timeframe}">
         <div class="d-symbol">${s.trading_symbol}</div>
         <div class="d-pct ${s.pct >= 0 ? 'pos' : 'neg'}">${s.pct >= 0 ? '+' : ''}${s.pct.toFixed(2)}%</div>
         <div class="d-sub">${s.signal_type} · ${s.timeframe} · entry ₹${Number(s.entry_price).toFixed(2)} → now ₹${s.ltp.toFixed(2)}</div>
@@ -1409,10 +1411,7 @@
       (unknown.length ? `<div class="accuracy-note" style="grid-column:1/-1; margin-top:10px;">${unknown.length} open signal(s) skipped — no live price available for them right now.</div>` : '');
   }
 
-  async function openDirection() {
-    document.getElementById('directionModal').classList.add('show');
-    document.getElementById('directionSummary').innerHTML = `<div class="accuracy-empty">Loading…</div>`;
-    document.getElementById('directionLists').innerHTML = '';
+  async function loadDirection() {
     document.getElementById('directionAsOf').textContent = fmtExactTime(new Date().toISOString());
     try {
       const today = todayIST();
@@ -1432,11 +1431,36 @@
     }
   }
 
-  document.getElementById('directionTrigger').addEventListener('click', openDirection);
-  document.getElementById('closeDirection').addEventListener('click', () =>
-    document.getElementById('directionModal').classList.remove('show'));
-  document.getElementById('directionModal').addEventListener('click', e => {
-    if (e.target.id === 'directionModal') document.getElementById('directionModal').classList.remove('show');
+  // ---- Main tab switcher: Signal History <-> Live Direction, inline in ----
+  // ---- the page (not a popup) -- clicking a stock in either one opens  ----
+  // ---- the same live chart.                                            ----
+  let activeMainTab = 'history';
+
+  function setMainTab(tab) {
+    activeMainTab = tab;
+    document.querySelectorAll('#mainTabFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.tab === tab));
+    document.getElementById('feedContainer').style.display = tab === 'history' ? '' : 'none';
+    document.getElementById('directionTab').style.display = tab === 'direction' ? '' : 'none';
+    document.getElementById('feedCount').style.display = tab === 'history' ? '' : 'none';
+    if (tab === 'direction') {
+      document.getElementById('directionSummary').innerHTML = `<div class="accuracy-empty">Loading…</div>`;
+      document.getElementById('directionLists').innerHTML = '';
+      loadDirection();
+    }
+  }
+
+  document.getElementById('mainTabFilter').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (chip) setMainTab(chip.dataset.tab);
+  });
+  // Sidebar shortcut jumps straight to the Live Direction tab.
+  document.getElementById('directionTrigger').addEventListener('click', () => {
+    setMainTab('direction');
+    document.getElementById('directionTab').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  document.getElementById('directionLists').addEventListener('click', e => {
+    const item = e.target.closest('.direction-item');
+    if (item) openChart(item.dataset.symbol, item.dataset.tf);
   });
 
   document.getElementById('exportExcelBtn').addEventListener('click', async () => {
@@ -1581,6 +1605,7 @@
   function refresh() {
     fetchHealth();
     fetchSignals();
+    if (activeMainTab === 'direction') loadDirection();
   }
   refresh();
   setInterval(refresh, 15000);
