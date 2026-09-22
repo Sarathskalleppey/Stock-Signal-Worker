@@ -287,16 +287,20 @@
   .sig-badge.strong-buy { background: rgba(61, 220, 151, 0.18); color: var(--green); border-color: var(--green); }
   .sig-badge.strong-sell { background: rgba(255, 107, 92, 0.18); color: var(--red); border-color: var(--red); }
   .sig-badge.buy-triggered, .sig-badge.sell-triggered {
-    width: auto;
-    padding: 4px 8px;
-    white-space: nowrap;
-    background: rgba(139, 150, 168, 0.12);
-    color: var(--text-dim);
+    flex-direction: column;
+    gap: 1px;
+    width: 66px;
+    padding: 4px 2px;
+    line-height: 1.2;
+    border: 1px solid var(--text-secondary);
+    background: rgba(139, 150, 168, 0.16);
+    color: var(--text-secondary);
   }
+  .sig-badge .tag-sub { font-size: 8px; opacity: 0.9; letter-spacing: 0.03em; }
 
   .strong-row { border-left: 2px solid var(--amber); }
-  .triggered-row { opacity: 0.7; }
-  .triggered-row:hover { opacity: 1; }
+  .triggered-row { border-left: 2px solid var(--border); }
+  .status-tag.not-counted { background: rgba(139, 150, 168, 0.16); color: var(--text-secondary); border: 1px solid var(--text-dim); }
   .strong-detail {
     grid-column: 1 / -1;
     display: flex;
@@ -939,7 +943,7 @@
 
       if (data.status === "ok" && data.angel_connected) {
         dot.className = "dot live";
-        text.innerHTML = `<strong>Live</strong> · Angel One connected`;
+        text.innerHTML = `<strong>Live</strong>`;
       } else {
         dot.className = "dot offline";
         text.innerHTML = `<strong>Degraded</strong> · check backend`;
@@ -1161,7 +1165,9 @@
       const badgeClass = s.signal_type === 'BUY'
         ? (isStrong ? 'strong-buy' : isTriggered ? 'buy-triggered' : 'buy')
         : (isStrong ? 'strong-sell' : isTriggered ? 'sell-triggered' : 'sell');
-      const badgeLabel = (isStrong ? '🔥 STRONG ' : '') + s.signal_type + (isTriggered ? ' TRIGGERED' : '');
+      const badgeLabel = isTriggered
+        ? `${s.signal_type}<span class="tag-sub">TRIGGERED</span>`
+        : (isStrong ? '🔥 STRONG ' : '') + s.signal_type;
       const adxLabel = s.adx_value != null ? Number(s.adx_value).toFixed(1) : '—';
 
       return `
@@ -1184,7 +1190,7 @@
         <div class="sig-pnl ${pnlClass}">
           ${isTriggered ? '—' : (showAmount != null ? '₹' + showAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—')}
           <div class="sig-sub">
-            <span class="status-tag ${statusClass}">${isTriggered ? 'not counted' : statusTag}</span>
+            <span class="status-tag ${isTriggered ? 'not-counted' : statusClass}">${isTriggered ? 'Not counted' : statusTag}</span>
             ${!isTriggered && !pnlKnown && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
           </div>
         </div>
