@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   :root {
     --bg: #0B1220;
@@ -416,6 +417,55 @@
   .movers-badge.sell { background: rgba(231, 76, 60, 0.15); color: var(--red); }
   .movers-empty { padding: 40px 20px; text-align: center; color: var(--text-dim); font-size: 13px; }
 
+  /* ---------- Chart modal ---------- */
+  .chart-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    max-width: 900px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .chart-symbol {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .chart-sub { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+  .chart-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .chart-legend { font-size: 11px; color: var(--text-secondary); display: flex; gap: 16px; }
+  .chart-legend b { font-weight: 600; }
+  #chartContainer {
+    height: 440px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .chart-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .chart-footer a { color: var(--amber); text-decoration: none; }
+  .chart-footer a:hover { text-decoration: underline; }
+  .chart-status { padding: 60px 20px; text-align: center; color: var(--text-dim); font-size: 13px; }
+
+  @media (max-width: 700px) {
+    #chartContainer { height: 320px; }
+  }
+
   @media (max-width: 900px) {
     .signal-row {
       grid-template-columns: 1fr;
@@ -539,6 +589,32 @@
       </div>
       <div class="movers-list" id="moversList">
         <div class="movers-empty">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="chartModal">
+    <div class="chart-box">
+      <div class="chart-header">
+        <div>
+          <div class="chart-symbol" id="chartSymbol">—</div>
+          <div class="chart-sub" id="chartSub"></div>
+        </div>
+        <div class="chart-controls">
+          <div class="filter-group" id="chartTfFilter">
+            <div class="chip" data-tf="5m">5m</div>
+            <div class="chip" data-tf="15m">15m</div>
+            <div class="chip" data-tf="4h">4h</div>
+            <div class="chip" data-tf="1d">1d</div>
+          </div>
+          <button class="movers-close" id="closeChart">✕</button>
+        </div>
+      </div>
+      <div class="chart-legend" id="chartLegend"></div>
+      <div id="chartContainer"></div>
+      <div class="chart-footer">
+        <span>Live from your own Angel One feed — same EMA the signal engine compares, no delay, no subscription.</span>
+        <a href="#" id="chartTvLink" target="_blank" rel="noopener">Open in TradingView ↗</a>
       </div>
     </div>
   </div>
@@ -682,7 +758,7 @@
       <div class="signal-row">
         <div class="sig-badge ${s.signal_type === 'BUY' ? 'buy' : 'sell'}">${s.signal_type}</div>
         <div>
-          <div class="sig-symbol" data-symbol="${s.trading_symbol}">${s.trading_symbol}</div>
+          <div class="sig-symbol" data-symbol="${s.trading_symbol}" data-tf="${s.timeframe}">${s.trading_symbol}</div>
           <div class="sig-sub">${s.indicator} · ${s.name || ''}</div>
         </div>
         <div class="sig-entry">
@@ -707,16 +783,103 @@
     }).join('') + `</div>`;
   }
 
-  // ---- Every stock symbol opens straight into TradingView, no prompt ----
-  function openTradingView(symbol) {
-    if (!symbol) return;
-    window.open(`https://www.tradingview.com/chart/?symbol=NSE:${symbol}`, '_blank');
+  // ---- Live chart modal: candlesticks + EMA fast/slow, straight from our
+  // own backend (Angel One feed, no delay, no TradingView subscription).
+  // Every stock symbol opens this instead of jumping off-site now; a
+  // TradingView link is still offered inside the modal for cross-checking. ----
+  let chart, candleSeries, emaFastSeries, emaSlowSeries, chartResizeObserver;
+  let chartSymbol = null;
+  let chartTf = '5m';
+  let chartPollTimer = null;
+
+  function ensureChart() {
+    if (chart) return;
+    const container = document.getElementById('chartContainer');
+    chart = LightweightCharts.createChart(container, {
+      layout: { background: { color: 'transparent' }, textColor: '#8B96A8', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 },
+      grid: { vertLines: { color: '#1E2C46' }, horzLines: { color: '#1E2C46' } },
+      timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#1E2C46' },
+      rightPriceScale: { borderColor: '#1E2C46' },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      handleScroll: true,
+      handleScale: true,
+    });
+    candleSeries = chart.addCandlestickSeries({
+      upColor: '#3DDC97', downColor: '#FF6B5C', borderVisible: false,
+      wickUpColor: '#3DDC97', wickDownColor: '#FF6B5C',
+    });
+    emaFastSeries = chart.addLineSeries({ color: '#E8B34F', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    emaSlowSeries = chart.addLineSeries({ color: '#5B8DEF', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    chartResizeObserver = new ResizeObserver(entries => {
+      const { width } = entries[0].contentRect;
+      if (width > 0) chart.applyOptions({ width });
+    });
+    chartResizeObserver.observe(container);
   }
+
+  async function loadChart() {
+    if (!chartSymbol) return;
+    const legend = document.getElementById('chartLegend');
+    try {
+      const res = await fetch(`${API_BASE}/candles/${encodeURIComponent(chartSymbol)}?timeframe=${chartTf}`);
+      const data = await res.json();
+      if (data.error) { legend.innerHTML = `<span style="color:var(--red)">${data.error}</span>`; return; }
+
+      ensureChart();
+      chart.applyOptions({ timeScale: { timeVisible: chartTf !== '1d' } });
+      candleSeries.setData(data.candles);
+      emaFastSeries.setData(data.ema_fast);
+      emaSlowSeries.setData(data.ema_slow);
+      chart.timeScale().fitContent();
+
+      legend.innerHTML =
+        `<span><b style="color:var(--amber)">●</b> EMA ${data.ema_fast_period}</span>` +
+        `<span><b style="color:#5B8DEF">●</b> EMA ${data.ema_slow_period}</span>` +
+        (data.live_bar ? `<span style="color:var(--green)">● live</span>` : '');
+      document.getElementById('chartSub').textContent =
+        `${data.name || ''} · ${chartTf.toUpperCase()} · EMA ${data.ema_fast_period}/${data.ema_slow_period} crossover`;
+    } catch (e) {
+      legend.innerHTML = `<span style="color:var(--red)">Couldn't load chart data — check the backend is reachable.</span>`;
+    }
+  }
+
+  function openChart(symbol, timeframe) {
+    if (!symbol) return;
+    chartSymbol = symbol;
+    chartTf = timeframe || '5m';
+    document.querySelectorAll('#chartTfFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.tf === chartTf));
+    document.getElementById('chartSymbol').textContent = symbol;
+    document.getElementById('chartSub').textContent = 'Loading…';
+    document.getElementById('chartLegend').textContent = '';
+    document.getElementById('chartTvLink').href = `https://www.tradingview.com/chart/?symbol=NSE:${symbol}`;
+    document.getElementById('chartModal').classList.add('show');
+    loadChart();
+    if (chartPollTimer) clearInterval(chartPollTimer);
+    chartPollTimer = setInterval(loadChart, 20000);
+  }
+
+  function closeChart() {
+    document.getElementById('chartModal').classList.remove('show');
+    if (chartPollTimer) { clearInterval(chartPollTimer); chartPollTimer = null; }
+  }
+
+  document.getElementById('closeChart').addEventListener('click', closeChart);
+  document.getElementById('chartModal').addEventListener('click', e => {
+    if (e.target.id === 'chartModal') closeChart();
+  });
+  document.getElementById('chartTfFilter').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    document.querySelectorAll('#chartTfFilter .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    chartTf = chip.dataset.tf;
+    loadChart();
+  });
 
   document.getElementById('feedContainer').addEventListener('click', e => {
     const target = e.target.closest('.sig-symbol');
     if (!target) return;
-    openTradingView(target.dataset.symbol);
+    openChart(target.dataset.symbol, target.dataset.tf);
   });
 
   // ---- Market movers modal (all 300: signal-triggered stocks first, then
@@ -746,7 +909,7 @@
         ? `<span class="movers-badge ${sig.signal_type === 'BUY' ? 'buy' : 'sell'}">${sig.signal_type} · ${sig.timeframe}</span>`
         : '';
       return `
-      <div class="movers-row ${sig ? 'has-signal' : ''}" data-symbol="${s.symbol}">
+      <div class="movers-row ${sig ? 'has-signal' : ''}" data-symbol="${s.symbol}" data-tf="${sig ? sig.timeframe : '5m'}">
         <div>
           <div class="m-symbol">${s.symbol}${badge}</div>
           <div class="m-name">${s.name || ''}</div>
@@ -775,7 +938,7 @@
   moversModal.addEventListener('click', e => {
     if (e.target === moversModal) { moversModal.classList.remove('show'); return; }
     const row = e.target.closest('.movers-row');
-    if (row) openTradingView(row.dataset.symbol);
+    if (row) openChart(row.dataset.symbol, row.dataset.tf);
   });
 
   document.getElementById('sortGain').addEventListener('click', () => {
