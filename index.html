@@ -237,8 +237,14 @@
     position: fixed; inset: 0;
     background: rgba(4, 8, 16, 0.65);
     z-index: 199;
+    touch-action: none;
   }
   .stats-backdrop.show { display: block; }
+
+  /* Swiping inside the panel while it's open must never leak through to
+     the signal feed underneath -- both the page itself and the panel's
+     own scroll boundary need to stop the gesture rather than chain it. */
+  body.stats-open { overflow: hidden; }
 
   .status-pill {
     display: flex;
@@ -883,6 +889,8 @@
       flex-wrap: nowrap;
       max-height: none;
       overflow-y: auto;
+      overscroll-behavior-y: contain;
+      -webkit-overflow-scrolling: touch;
       background: var(--bg-panel);
       border-right: 1px solid var(--border);
       padding: 56px 14px 20px;
@@ -1207,6 +1215,7 @@
   function toggleStatsPanel(show) {
     document.getElementById('statsPanel').classList.toggle('open', show);
     document.getElementById('statsBackdrop').classList.toggle('show', show);
+    document.body.classList.toggle('stats-open', show);
   }
   document.getElementById('mobileMenuBtn').addEventListener('click', () => toggleStatsPanel(true));
   document.getElementById('statsClose').addEventListener('click', () => toggleStatsPanel(false));
