@@ -22,8 +22,64 @@
     --red: #FF6B5C;
     --red-dim: #7A2E27;
     --amber: #E8B34F;
+    --bg-tint-1: rgba(232, 179, 79, 0.05);
+    --bg-tint-2: rgba(61, 220, 151, 0.04);
     --font-display: 'Space Grotesk', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  /* Neon Pulse — deep violet, saturated neon accents */
+  :root[data-theme="neon"] {
+    --bg: #0A0118;
+    --bg-panel: #170B2E;
+    --bg-panel-hover: #23124A;
+    --border: #3D1E6B;
+    --text-primary: #F5F0FF;
+    --text-secondary: #C7AEEE;
+    --text-dim: #8768C4;
+    --green: #00FFA3;
+    --green-dim: #0B6B4A;
+    --red: #FF3D7F;
+    --red-dim: #7A1440;
+    --amber: #FFD600;
+    --bg-tint-1: rgba(255, 214, 0, 0.08);
+    --bg-tint-2: rgba(0, 255, 163, 0.07);
+  }
+
+  /* Executive Slate — charcoal + warm gold, boardroom terminal */
+  :root[data-theme="slate"] {
+    --bg: #0D0D0F;
+    --bg-panel: #17171B;
+    --bg-panel-hover: #1F1F24;
+    --border: #2A2A31;
+    --text-primary: #F2F1ED;
+    --text-secondary: #A6A29B;
+    --text-dim: #6B6870;
+    --green: #4FAE8A;
+    --green-dim: #2A5C48;
+    --red: #C1544B;
+    --red-dim: #5C2A26;
+    --amber: #C9A24B;
+    --bg-tint-1: rgba(201, 162, 75, 0.05);
+    --bg-tint-2: rgba(79, 174, 138, 0.04);
+  }
+
+  /* Deep Emerald — forest green + copper, private trading floor */
+  :root[data-theme="emerald"] {
+    --bg: #071410;
+    --bg-panel: #0E241D;
+    --bg-panel-hover: #143327;
+    --border: #1E4536;
+    --text-primary: #EAF3EE;
+    --text-secondary: #8FB3A3;
+    --text-dim: #4F7566;
+    --green: #4ADE9E;
+    --green-dim: #1F6B4E;
+    --red: #E8735C;
+    --red-dim: #7A2E27;
+    --amber: #D9A55C;
+    --bg-tint-1: rgba(217, 165, 92, 0.06);
+    --bg-tint-2: rgba(74, 222, 158, 0.05);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -31,13 +87,24 @@
   body {
     background: var(--bg);
     background-image:
-      radial-gradient(circle at 15% 0%, rgba(232, 179, 79, 0.05), transparent 40%),
-      radial-gradient(circle at 85% 100%, rgba(61, 220, 151, 0.04), transparent 40%);
+      radial-gradient(circle at 15% 0%, var(--bg-tint-1), transparent 40%),
+      radial-gradient(circle at 85% 100%, var(--bg-tint-2), transparent 40%);
     color: var(--text-primary);
     font-family: var(--font-mono);
     min-height: 100vh;
     padding: 24px 20px 60px;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
+
+  .theme-picker { display: flex; gap: 7px; align-items: center; }
+  .theme-dot {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid transparent; cursor: pointer; padding: 0;
+    background: conic-gradient(var(--sw1) 0deg 120deg, var(--sw2) 120deg 240deg, var(--sw3) 240deg 360deg);
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  .theme-dot:hover { transform: scale(1.18); }
+  .theme-dot.active { border-color: var(--text-primary); }
 
   .wrap { max-width: 1400px; margin: 0 auto; display: flex; gap: 24px; align-items: flex-start; }
   .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: calc(100vh - 84px); }
@@ -742,6 +809,12 @@
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
         <div style="font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-dim);">Built by Sarath Sreekumar</div>
+        <div class="theme-picker" id="themePicker">
+          <button class="theme-dot active" data-theme="" style="--sw1:#0B1220;--sw2:#3DDC97;--sw3:#E8B34F;" title="Classic"></button>
+          <button class="theme-dot" data-theme="neon" style="--sw1:#0A0118;--sw2:#00FFA3;--sw3:#FF3D7F;" title="Neon Pulse"></button>
+          <button class="theme-dot" data-theme="slate" style="--sw1:#0D0D0F;--sw2:#C9A24B;--sw3:#4FAE8A;" title="Executive Slate"></button>
+          <button class="theme-dot" data-theme="emerald" style="--sw1:#071410;--sw2:#4ADE9E;--sw3:#D9A55C;" title="Deep Emerald"></button>
+        </div>
         <div class="status-pill" id="statusPill">
           <div class="dot" id="statusDot"></div>
           <span id="statusText">Connecting…</span>
@@ -901,6 +974,26 @@
   const API_BASE = window.SIGNAL_API_BASE || "https://facilitate-vacuum-dubai-magazines.trycloudflare.com";
 
   document.getElementById('apiBaseLabel').textContent = API_BASE;
+
+  // ---- Theme picker: swaps the CSS custom-property palette in :root[data-theme].
+  // Remembered per-browser (localStorage); wrapped in try/catch since it can
+  // throw in private-browsing/blocked-storage contexts -- theme just won't
+  // persist there, which is fine. ----
+  function applyTheme(theme) {
+    if (theme) document.documentElement.setAttribute('data-theme', theme);
+    else document.documentElement.removeAttribute('data-theme');
+    document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === theme));
+    try { localStorage.setItem('signalDeskTheme', theme); } catch (e) {}
+  }
+  document.getElementById('themePicker').addEventListener('click', e => {
+    const dot = e.target.closest('.theme-dot');
+    if (dot) applyTheme(dot.dataset.theme);
+  });
+  (function initTheme() {
+    let saved = '';
+    try { saved = localStorage.getItem('signalDeskTheme') || ''; } catch (e) {}
+    applyTheme(saved);
+  })();
 
   let allSignals = [];
   let lastMoversBySymbol = {};  // set on every fetchSignals() -- the live LTPs behind the Net P&L stat
