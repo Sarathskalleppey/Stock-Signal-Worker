@@ -533,6 +533,16 @@
   .accuracy-row.pos b { color: var(--green); }
   .accuracy-row.neg b { color: var(--red); }
   .accuracy-empty { padding: 30px; text-align: center; color: var(--text-dim); font-size: 13px; grid-column: 1 / -1; }
+  .pnl-total {
+    grid-column: 1 / -1;
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 4px; padding: 14px 16px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    font-family: var(--font-display); font-size: 14px; font-weight: 700;
+  }
+  .pnl-total.pos b { color: var(--green); }
+  .pnl-total.neg b { color: var(--red); }
+  .pnl-total b { font-size: 20px; }
 
   .accuracy-daily-wrap { overflow-y: auto; max-height: 320px; border: 1px solid var(--border); border-radius: 8px; }
   table.accuracy-daily { width: 100%; border-collapse: collapse; font-size: 11.5px; }
@@ -668,11 +678,11 @@
         <div class="stat-value" id="statCount">—</div>
         <div class="sig-sub" id="statBuySell"></div>
       </div>
-      <div class="stat-card">
+      <button class="stat-card stat-card-btn" id="pnlTrigger">
         <div class="stat-label">Net P&amp;L (Rs 1L / signal)</div>
         <div class="stat-value" id="statPnl">—</div>
         <div class="sig-sub">closed + live open, mark-to-market</div>
-      </div>
+      </button>
       <button class="stat-card stat-card-btn" id="directionTrigger">
         <div class="stat-label">🎯 Live Signal Direction</div>
         <div class="stat-value" style="font-size:14px;">In favor vs against</div>
@@ -823,6 +833,23 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="pnlModal">
+    <div class="movers-box accuracy-box">
+      <div class="movers-header">
+        <div class="movers-title">Net P&amp;L — Closed vs Provisional</div>
+        <button class="movers-close" id="closePnl">✕</button>
+      </div>
+      <div class="accuracy-note">
+        Realized P&amp;L from closed signals, plus live mark-to-market P&amp;L from every still-open signal
+        (already-booked partial exits + unrealized move on the remaining quantity at current LTP).
+        Same 300-row / date-filtered set as the sidebar stat.
+      </div>
+      <div class="accuracy-summary" id="pnlSummary">
+        <div class="accuracy-empty">Loading…</div>
+      </div>
+    </div>
+  </div>
+
 
 <script>
   // ---- Configure your backend URL here ----
@@ -831,6 +858,7 @@
   document.getElementById('apiBaseLabel').textContent = API_BASE;
 
   let allSignals = [];
+  let lastMoversBySymbol = {};  // set on every fetchSignals() -- the live LTPs behind the Net P&L stat
   let activeSignalFilter = "ALL";
   let activeStatusFilter = "ALL";
   let activeTfFilter = "ALL";
@@ -926,8 +954,10 @@
       ]);
       const data = await res.json();
       allSignals = Array.isArray(data) ? data : [];
+      lastMoversBySymbol = moversBySymbol;
       renderStats(moversBySymbol);
       renderFeed();
+      if (document.getElementById('pnlModal').classList.contains('show')) renderPnlDetail();
     } catch (e) {
       document.getElementById('feedContainer').innerHTML =
         `<div class="error-state">Couldn't load signal history. Check that the backend is reachable and CORS is enabled.</div>`;
@@ -996,6 +1026,54 @@
       : "—";
     pnlEl.className = "stat-value " + (netPnl > 0 ? "pos" : netPnl < 0 ? "neg" : "");
   }
+
+  // ---- Net P&L detail: same 300-row/date-filtered set as the sidebar   ----
+  // ---- stat, split into what's actually realized (closed) vs what's    ----
+  // ---- still live (open, mark-to-market) -- the two numbers behind the ----
+  // ---- single net figure.                                              ----
+  function renderPnlDetail() {
+    const el = document.getElementById('pnlSummary');
+    const cls = n => n > 0 ? 'pos' : n < 0 ? 'neg' : '';
+
+    const closed = allSignals.filter(s => s.status === "closed" && s.pnl_amount != null);
+    const closedPnl = closed.reduce((sum, s) => sum + Number(s.pnl_amount), 0);
+    const wins = closed.filter(s => Number(s.pnl_amount) > 0).length;
+
+    const open = allSignals.filter(s => s.status === "open");
+    const openPnls = open.map(s => provisionalPnl(s, lastMoversBySymbol));
+    const openPnl = openPnls.reduce((sum, n) => sum + n, 0);
+    const favorable = openPnls.filter(n => n >= 0).length;
+
+    const netPnl = closedPnl + openPnl;
+
+    el.innerHTML = `
+      <div class="accuracy-period">
+        <div class="accuracy-period-title">Closed</div>
+        <div class="accuracy-row"><span>Signals closed</span><b>${closed.length}</b></div>
+        <div class="accuracy-row"><span>Win rate</span><b>${closed.length ? Math.round(wins / closed.length * 100) + '%' : '—'}</b></div>
+        <div class="accuracy-row ${cls(closedPnl)}"><span>Realized P&amp;L</span><b>${closed.length ? pnlLabel(closedPnl) : '—'}</b></div>
+      </div>
+      <div class="accuracy-period">
+        <div class="accuracy-period-title">Open (provisional)</div>
+        <div class="accuracy-row"><span>Signals open</span><b>${open.length}</b></div>
+        <div class="accuracy-row"><span>Favorable · Unfavorable</span><b><span class="pos">${favorable}</span> · <span class="neg">${open.length - favorable}</span></b></div>
+        <div class="accuracy-row ${cls(openPnl)}"><span>Provisional P&amp;L</span><b>${open.length ? pnlLabel(openPnl) : '—'}</b></div>
+      </div>
+      <div class="pnl-total ${cls(netPnl)}"><span>Net P&amp;L (closed + open)</span><b>${pnlLabel(netPnl)}</b></div>
+    `;
+  }
+
+  function openPnlDetail() {
+    document.getElementById('pnlModal').classList.add('show');
+    renderPnlDetail();
+  }
+
+  document.getElementById('pnlTrigger').addEventListener('click', openPnlDetail);
+  document.getElementById('closePnl').addEventListener('click', () =>
+    document.getElementById('pnlModal').classList.remove('show'));
+  document.getElementById('pnlModal').addEventListener('click', e => {
+    if (e.target.id === 'pnlModal') document.getElementById('pnlModal').classList.remove('show');
+  });
 
   function renderFeed() {
     const filtered = filteredSignals();
