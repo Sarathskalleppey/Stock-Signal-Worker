@@ -479,9 +479,24 @@
     padding: 20px;
     width: 100%;
     max-width: 900px;
+    max-height: 90vh;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 14px;
+  }
+  .chart-subpanel-title {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+  .chart-subcontainer {
+    height: 120px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
   }
   .chart-header {
     display: flex;
@@ -821,6 +836,18 @@
       </div>
       <div class="chart-legend" id="chartLegend"></div>
       <div id="chartContainer"></div>
+      <div id="chartAdxWrap" style="display:none;">
+        <div class="chart-subpanel-title">ADX — trend strength (confirms Buy/Sell)</div>
+        <div id="chartAdxContainer" class="chart-subcontainer"></div>
+      </div>
+      <div id="chartVwapVolWrap" style="display:none;">
+        <div class="chart-subpanel-title">Volume vs 20-bar average (confirms Strong)</div>
+        <div id="chartVolumeContainer" class="chart-subcontainer"></div>
+      </div>
+      <div id="chartRsiWrap" style="display:none;">
+        <div class="chart-subpanel-title">RSI — momentum (confirms Strong)</div>
+        <div id="chartRsiContainer" class="chart-subcontainer"></div>
+      </div>
       <div class="chart-footer">
         <span>Live from your own Angel One feed — same EMA the signal engine compares, no delay, no subscription.</span>
         <a href="#" id="chartTvLink" target="_blank" rel="noopener">Open in TradingView ↗</a>
@@ -1174,7 +1201,7 @@
       <div class="signal-row${isStrong ? ' strong-row' : ''}${isTriggered ? ' triggered-row' : ''}">
         <div class="sig-badge ${badgeClass}">${badgeLabel}</div>
         <div>
-          <div class="sig-symbol" data-symbol="${s.trading_symbol}" data-tf="${s.timeframe}">${s.trading_symbol}</div>
+          <div class="sig-symbol" data-symbol="${s.trading_symbol}" data-tf="${s.timeframe}" data-tier="${tierOf(s)}">${s.trading_symbol}</div>
           <div class="sig-sub">${s.indicator} · ${s.name || ''}</div>
         </div>
         <div class="sig-entry">
@@ -1218,11 +1245,24 @@
   // ---- Live chart modal: candlesticks + EMA fast/slow, straight from our
   // own backend (Angel One feed, no delay, no TradingView subscription).
   // Every stock symbol opens this instead of jumping off-site now; a
-  // TradingView link is still offered inside the modal for cross-checking. ----
-  let chart, candleSeries, emaFastSeries, emaSlowSeries, chartResizeObserver;
+  // TradingView link is still offered inside the modal for cross-checking.
+  // Which EXTRA indicators show depends on the tier of the signal that was
+  // clicked -- Triggered: EMA only (nothing confirmed it yet). Buy/Sell:
+  // + ADX (that's what promoted it from Triggered). Strong Buy/Strong Sell:
+  // + ADX + VWAP + Volume + RSI (everything classify_strength checked). ----
+  let chart, candleSeries, emaFastSeries, emaSlowSeries, vwapSeries, chartResizeObserver;
+  let adxChart, adxSeries, adxThresholdLine, adxResizeObserver;
+  let volumeChart, volumeSeries, volumeAvgSeries, volumeResizeObserver;
+  let rsiChart, rsiSeries, rsiResizeObserver;
   let chartSymbol = null;
   let chartTf = '5m';
+  let chartTier = 'triggered';  // 'triggered' | 'confirmed' | 'strong'
   let chartPollTimer = null;
+
+  function tierOf(s) {
+    if (!isAdxConfirmed(s)) return 'triggered';
+    return s.strength === 'strong' ? 'strong' : 'confirmed';
+  }
 
   function ensureChart() {
     if (chart) return;
@@ -1242,11 +1282,72 @@
     });
     emaFastSeries = chart.addLineSeries({ color: '#E8B34F', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
     emaSlowSeries = chart.addLineSeries({ color: '#5B8DEF', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    vwapSeries = chart.addLineSeries({
+      color: '#B47EF5', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dashed,
+      priceLineVisible: false, lastValueVisible: false,
+    });
     chartResizeObserver = new ResizeObserver(entries => {
       const { width } = entries[0].contentRect;
       if (width > 0) chart.applyOptions({ width });
     });
     chartResizeObserver.observe(container);
+  }
+
+  // Small standalone indicator chart, same look/timescale as the main one --
+  // Lightweight Charts 4.x has no native multi-pane support, so ADX/RSI/
+  // Volume are each their own chart instance stacked below the price chart.
+  function ensureSubChart(containerId) {
+    const container = document.getElementById(containerId);
+    const subChart = LightweightCharts.createChart(container, {
+      layout: { background: { color: 'transparent' }, textColor: '#8B96A8', fontFamily: 'JetBrains Mono, monospace', fontSize: 10 },
+      grid: { vertLines: { color: '#1E2C46' }, horzLines: { color: '#1E2C46' } },
+      timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#1E2C46' },
+      rightPriceScale: { borderColor: '#1E2C46' },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      handleScroll: true,
+      handleScale: true,
+    });
+    const observer = new ResizeObserver(entries => {
+      const { width } = entries[0].contentRect;
+      if (width > 0) subChart.applyOptions({ width });
+    });
+    observer.observe(container);
+    return { subChart, observer };
+  }
+
+  function ensureAdxChart() {
+    if (adxChart) return;
+    const { subChart } = ensureSubChart('chartAdxContainer');
+    adxChart = subChart;
+    adxSeries = adxChart.addLineSeries({ color: '#E8B34F', lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+  }
+
+  function ensureVolumeChart() {
+    if (volumeChart) return;
+    const { subChart } = ensureSubChart('chartVolumeContainer');
+    volumeChart = subChart;
+    volumeSeries = volumeChart.addHistogramSeries({ color: '#5B8DEF', priceLineVisible: false, lastValueVisible: false });
+    volumeAvgSeries = volumeChart.addLineSeries({ color: '#E8B34F', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+  }
+
+  function ensureRsiChart() {
+    if (rsiChart) return;
+    const { subChart } = ensureSubChart('chartRsiContainer');
+    rsiChart = subChart;
+    rsiSeries = rsiChart.addLineSeries({ color: '#3DDC97', lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+    rsiSeries.createPriceLine({ price: 50, color: '#57647A', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false, title: '50' });
+  }
+
+  // Shows/hides the ADX/Volume/RSI sub-panels for the given tier, creating
+  // each lazily the first time it's actually needed.
+  function applyTierPanels(tier) {
+    const showAdx = tier === 'confirmed' || tier === 'strong';
+    const showStrongExtras = tier === 'strong';
+    document.getElementById('chartAdxWrap').style.display = showAdx ? '' : 'none';
+    document.getElementById('chartVwapVolWrap').style.display = showStrongExtras ? '' : 'none';
+    document.getElementById('chartRsiWrap').style.display = showStrongExtras ? '' : 'none';
+    if (showAdx) ensureAdxChart();
+    if (showStrongExtras) { ensureVolumeChart(); ensureRsiChart(); }
   }
 
   async function loadChart() {
@@ -1262,6 +1363,7 @@
       candleSeries.setData(data.candles);
       emaFastSeries.setData(data.ema_fast);
       emaSlowSeries.setData(data.ema_slow);
+      vwapSeries.setData(chartTier === 'strong' ? (data.vwap || []) : []);
       chart.timeScale().fitContent();
       // Lightweight Charts locks the price axis to a fixed range the moment
       // a viewer drags/zooms it, and never re-fits on its own after that —
@@ -1271,27 +1373,71 @@
       // auto-fit on every open/switch, regardless of any prior manual zoom.
       chart.priceScale('right').applyOptions({ autoScale: true });
 
-      legend.innerHTML =
-        `<span><b style="color:var(--amber)">●</b> EMA ${data.ema_fast_period}</span>` +
-        `<span><b style="color:#5B8DEF">●</b> EMA ${data.ema_slow_period}</span>` +
-        (data.live_bar ? `<span style="color:var(--green)">● live</span>` : '');
+      if (chartTier === 'confirmed' || chartTier === 'strong') {
+        ensureAdxChart();
+        adxSeries.setData(data.adx || []);
+        if (data.adx_threshold != null) {
+          if (adxThresholdLine) {
+            adxThresholdLine.applyOptions({ price: data.adx_threshold });
+          } else {
+            adxThresholdLine = adxSeries.createPriceLine({
+              price: data.adx_threshold, color: '#8B96A8', lineWidth: 1,
+              lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'trending ≥',
+            });
+          }
+        }
+        adxChart.timeScale().fitContent();
+      }
+      if (chartTier === 'strong') {
+        ensureVolumeChart();
+        volumeSeries.setData((data.volume || []).map(v => ({ ...v, color: 'rgba(91, 141, 239, 0.5)' })));
+        volumeAvgSeries.setData(data.volume_avg || []);
+        volumeChart.timeScale().fitContent();
+
+        ensureRsiChart();
+        rsiSeries.setData(data.rsi || []);
+        rsiChart.timeScale().fitContent();
+      }
+
+      const legendParts = [
+        `<span><b style="color:var(--amber)">●</b> EMA ${data.ema_fast_period}</span>`,
+        `<span><b style="color:#5B8DEF">●</b> EMA ${data.ema_slow_period}</span>`,
+      ];
+      if (chartTier === 'confirmed' || chartTier === 'strong') legendParts.push(`<span><b style="color:#E8B34F">●</b> ADX ${data.adx_period}</span>`);
+      if (chartTier === 'strong') {
+        legendParts.push(`<span><b style="color:#B47EF5">●</b> VWAP</span>`);
+        legendParts.push(`<span><b style="color:#5B8DEF">●</b> Volume</span>`);
+        legendParts.push(`<span><b style="color:#3DDC97">●</b> RSI ${data.rsi_period}</span>`);
+      }
+      if (data.live_bar) legendParts.push(`<span style="color:var(--green)">● live</span>`);
+      legend.innerHTML = legendParts.join('');
+
+      const tierLabel = chartTier === 'strong' ? 'Strong Buy/Sell — full confirmation set'
+        : chartTier === 'confirmed' ? 'Buy/Sell — ADX-confirmed'
+        : 'Buy/Sell Triggered — EMA only, ADX not yet confirmed';
       document.getElementById('chartSub').textContent =
-        `${data.name || ''} · ${chartTf.toUpperCase()} · EMA ${data.ema_fast_period}/${data.ema_slow_period} crossover`;
+        `${data.name || ''} · ${chartTf.toUpperCase()} · ${tierLabel}`;
     } catch (e) {
       legend.innerHTML = `<span style="color:var(--red)">Couldn't load chart data — check the backend is reachable.</span>`;
     }
   }
 
-  function openChart(symbol, timeframe) {
+  function openChart(symbol, timeframe, tier) {
     if (!symbol) return;
     chartSymbol = symbol;
     chartTf = timeframe || '5m';
+    chartTier = tier || 'triggered';
     document.querySelectorAll('#chartTfFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.tf === chartTf));
     document.getElementById('chartSymbol').textContent = symbol;
     document.getElementById('chartSub').textContent = 'Loading…';
     document.getElementById('chartLegend').textContent = '';
     document.getElementById('chartTvLink').href = `https://www.tradingview.com/chart/?symbol=NSE:${symbol}`;
+    // The modal must be visible (display:flex) BEFORE any sub-panel chart is
+    // created inside it -- Lightweight Charts reads the container's real
+    // pixel size at creation time, and a still-hidden (display:none)
+    // container has zero size.
     document.getElementById('chartModal').classList.add('show');
+    applyTierPanels(chartTier);
     loadChart();
     if (chartPollTimer) clearInterval(chartPollTimer);
     chartPollTimer = setInterval(loadChart, 20000);
@@ -1318,7 +1464,7 @@
   document.getElementById('feedContainer').addEventListener('click', e => {
     const target = e.target.closest('.sig-symbol');
     if (!target) return;
-    openChart(target.dataset.symbol, target.dataset.tf);
+    openChart(target.dataset.symbol, target.dataset.tf, target.dataset.tier);
   });
 
   // ---- Market movers modal (all 300: signal-triggered stocks first, then
@@ -1635,7 +1781,7 @@
 
   function directionItemHtml(s) {
     return `
-      <div class="direction-item" data-symbol="${s.trading_symbol}" data-tf="${s.timeframe}">
+      <div class="direction-item" data-symbol="${s.trading_symbol}" data-tf="${s.timeframe}" data-tier="${tierOf(s)}">
         <div class="d-symbol">${s.trading_symbol}</div>
         <div class="d-pct ${s.pct >= 0 ? 'pos' : 'neg'}">${s.pct >= 0 ? '+' : ''}${s.pct.toFixed(2)}%</div>
         <div class="d-sub">${s.signal_type} · ${s.timeframe} · entry ₹${Number(s.entry_price).toFixed(2)} → now ₹${s.ltp.toFixed(2)}</div>
@@ -1750,7 +1896,7 @@
   });
   document.getElementById('directionLists').addEventListener('click', e => {
     const item = e.target.closest('.direction-item');
-    if (item) openChart(item.dataset.symbol, item.dataset.tf);
+    if (item) openChart(item.dataset.symbol, item.dataset.tf, item.dataset.tier);
   });
 
   document.getElementById('exportExcelBtn').addEventListener('click', async () => {
