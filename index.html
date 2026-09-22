@@ -1149,7 +1149,7 @@
           <span>4H Trend <b class="pos">${s.trend_4h === 'up' ? '▲ Up' : s.trend_4h === 'down' ? '▼ Down' : '—'}</b></span>
           <span>VWAP <b class="pos">Favor</b></span>
           <span>Volume <b class="pos">Favor</b></span>
-          <span>4H RSI <b class="pos">Favor${s.rsi_4h_value != null ? ` (${Number(s.rsi_4h_value).toFixed(1)})` : ''}</b></span>
+          <span>RSI <b class="pos">Favor${s.rsi_value != null ? ` (${Number(s.rsi_value).toFixed(1)})` : ''}</b></span>
         </div>` : ''}
       </div>
     `;
@@ -1779,8 +1779,8 @@
         "4H Trend": s.trend_4h || "",
         "VWAP": s.vwap_status || "",
         "Volume": s.volume_status || "",
-        "4H RSI": s.rsi_4h_status || "",
-        "4H RSI Value": s.rsi_4h_value ?? "",
+        "RSI": s.rsi_status || "",
+        "RSI Value": s.rsi_value ?? "",
         "Indicator": s.indicator,
         "Timeframe": s.timeframe,
         "Entry Price": s.entry_price,
