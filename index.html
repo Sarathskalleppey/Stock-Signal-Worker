@@ -641,6 +641,10 @@
         <div class="stat-label">Net P&amp;L (Rs 1L / signal)</div>
         <div class="stat-value" id="statPnl">—</div>
       </div>
+      <button class="stat-card stat-card-btn" id="directionTrigger">
+        <div class="stat-label">🎯 Live Signal Direction</div>
+        <div class="stat-value" style="font-size:14px;">In favor vs against</div>
+      </button>
       <div class="tf-box">
         <div class="filter-group" id="tfFilter">
           <div class="chip active" data-tf="ALL">All timeframes</div>
@@ -657,10 +661,6 @@
       <button class="stat-card stat-card-btn" id="accuracyTrigger">
         <div class="stat-label">⏰ Before / After 11 AM</div>
         <div class="stat-value" style="font-size:14px;">Accuracy study</div>
-      </button>
-      <button class="stat-card stat-card-btn" id="directionTrigger">
-        <div class="stat-label">🎯 Live Signal Direction</div>
-        <div class="stat-value" style="font-size:14px;">In favor vs against</div>
       </button>
     </div>
 
@@ -1237,10 +1237,14 @@
   }
 
   function emptyPeriodBucket() {
-    return { total: 0, buy: 0, sell: 0, closed: 0, open: 0, wins: 0, netPnl: 0 };
+    return { total: 0, buy: 0, sell: 0, closed: 0, open: 0, wins: 0, netPnl: 0, favorable: 0, unfavorable: 0 };
   }
 
-  function addToBucket(b, s, pnl, isClosed) {
+  // For an OPEN signal, "favorable" = live price has moved the way the
+  // signal needs since entry (up for BUY, down for SELL) -- same rule as
+  // the Live Signal Direction tab. Lets this view say something useful
+  // even before anything has actually closed (win rate/P&L are blank then).
+  function addToBucket(b, s, pnl, isClosed, moversBySymbol) {
     b.total += 1;
     if (s.signal_type === 'BUY') b.buy += 1; else b.sell += 1;
     if (isClosed) {
@@ -1249,11 +1253,17 @@
       if (pnl > 0) b.wins += 1;
     } else {
       b.open += 1;
+      const m = moversBySymbol[s.trading_symbol];
+      if (m && m.ltp != null) {
+        const ltp = Number(m.ltp), entry = Number(s.entry_price);
+        const favorable = s.signal_type === 'BUY' ? ltp >= entry : ltp <= entry;
+        if (favorable) b.favorable += 1; else b.unfavorable += 1;
+      }
     }
   }
 
   // rows -> { overall: {before, after}, byDay: {date: {before, after}} }
-  function computeAccuracy(rows) {
+  function computeAccuracy(rows, moversBySymbol = {}) {
     const overall = { before: emptyPeriodBucket(), after: emptyPeriodBucket() };
     const byDay = {};
     rows.forEach(s => {
@@ -1263,10 +1273,25 @@
       const isClosed = s.status === 'closed' && s.pnl_amount != null;
       const pnl = isClosed ? Number(s.pnl_amount) : 0;
       if (!byDay[day]) byDay[day] = { before: emptyPeriodBucket(), after: emptyPeriodBucket() };
-      addToBucket(overall[period], s, pnl, isClosed);
-      addToBucket(byDay[day][period], s, pnl, isClosed);
+      addToBucket(overall[period], s, pnl, isClosed, moversBySymbol);
+      addToBucket(byDay[day][period], s, pnl, isClosed, moversBySymbol);
     });
     return { overall, byDay };
+  }
+
+  // Fetches /market-movers and returns a {symbol: row} lookup, or {} on
+  // failure (favorable/unfavorable just won't be available -- everything
+  // else in the accuracy view still works).
+  async function fetchMoversBySymbol() {
+    try {
+      const res = await fetch(`${API_BASE}/market-movers`);
+      const movers = await res.json();
+      const bySymbol = {};
+      (Array.isArray(movers) ? movers : []).forEach(m => { bySymbol[m.symbol] = m; });
+      return bySymbol;
+    } catch (e) {
+      return {};
+    }
   }
 
   function winRateLabel(b) {
@@ -1290,6 +1315,8 @@
         <div class="accuracy-row"><span>Signals generated</span><b>${b.total}</b></div>
         <div class="accuracy-row"><span>Buy · Sell</span><b>${b.buy} · ${b.sell}</b></div>
         <div class="accuracy-row"><span>Closed · Still open</span><b>${b.closed} · ${b.open}</b></div>
+        <div class="accuracy-row pos"><span>Favorable trade (open, live)</span><b>${b.favorable}</b></div>
+        <div class="accuracy-row neg"><span>Unfavorable trade (open, live)</span><b>${b.unfavorable}</b></div>
         <div class="accuracy-row"><span>Win rate (of closed)</span><b>${winRateLabel(b)}</b></div>
         <div class="accuracy-row ${pnlClass}"><span>Net P&amp;L</span><b>${b.closed ? pnlLabel(b.netPnl) : '—'}</b></div>
         <div class="accuracy-row"><span>Avg P&amp;L / closed signal</span><b>${b.closed ? pnlLabel(Math.round(b.netPnl / b.closed)) : '—'}</b></div>
@@ -1310,12 +1337,13 @@
       const dayTotal = before.netPnl + after.netPnl;
       const dayClosed = before.closed + after.closed;
       const totalClass = dayTotal > 0 ? 'pos' : dayTotal < 0 ? 'neg' : '';
+      const favSub = b => (b.favorable + b.unfavorable) ? `<span class="pos">F${b.favorable}</span>/<span class="neg">U${b.unfavorable}</span>` : '';
       return `
       <tr>
         <td>${day}</td>
-        <td>${before.total}<div class="sub">${winRateLabel(before)} win</div></td>
+        <td>${before.total}<div class="sub">${winRateLabel(before)} win${favSub(before) ? ' · ' + favSub(before) : ''}</div></td>
         <td class="${before.netPnl > 0 ? 'pos' : before.netPnl < 0 ? 'neg' : ''}">${before.closed ? pnlLabel(before.netPnl) : '—'}</td>
-        <td>${after.total}<div class="sub">${winRateLabel(after)} win</div></td>
+        <td>${after.total}<div class="sub">${winRateLabel(after)} win${favSub(after) ? ' · ' + favSub(after) : ''}</div></td>
         <td class="${after.netPnl > 0 ? 'pos' : after.netPnl < 0 ? 'neg' : ''}">${after.closed ? pnlLabel(after.netPnl) : '—'}</td>
         <td class="total-cell ${totalClass}">${dayClosed ? pnlLabel(dayTotal) : '—'}</td>
       </tr>`;
@@ -1336,8 +1364,8 @@
     document.getElementById('accuracyRange').textContent =
       dateFrom ? `${dateFrom} to ${dateTo || todayIST()}` : 'last 30 days (no "From" date set)';
     try {
-      const rows = await fetchFullRange(dateFrom, dateTo);
-      const { overall, byDay } = computeAccuracy(rows);
+      const [rows, moversBySymbol] = await Promise.all([fetchFullRange(dateFrom, dateTo), fetchMoversBySymbol()]);
+      const { overall, byDay } = computeAccuracy(rows, moversBySymbol);
       renderAccuracySummary(overall);
       renderAccuracyDaily(byDay);
     } catch (e) {
@@ -1572,16 +1600,22 @@
 
     // Sheet 3: same full range, split before/after 11:00 AM IST per day --
     // for studying which half of the day produces more accurate signals.
-    const { overall, byDay } = computeAccuracy(rows);
+    // Favorable/Unfavorable reflect LIVE prices at export time, so they're
+    // only meaningful for today's still-open signals -- older days are
+    // already fully closed and show blank there.
+    const exportMovers = await fetchMoversBySymbol();
+    const { overall, byDay } = computeAccuracy(rows, exportMovers);
     const sessionRows = Object.keys(byDay).sort().map(day => {
       const { before, after } = byDay[day];
       return {
         "Date": day,
         "Before 11AM — Signals": before.total, "Before 11AM — Buy": before.buy, "Before 11AM — Sell": before.sell,
-        "Before 11AM — Closed": before.closed, "Before 11AM — Win Rate %": before.closed ? Math.round((before.wins / before.closed) * 100) : "",
+        "Before 11AM — Closed": before.closed, "Before 11AM — Favorable (open)": before.favorable, "Before 11AM — Unfavorable (open)": before.unfavorable,
+        "Before 11AM — Win Rate %": before.closed ? Math.round((before.wins / before.closed) * 100) : "",
         "Before 11AM — Net P&L (Rs)": before.closed ? Math.round(before.netPnl * 100) / 100 : "",
         "After 11AM — Signals": after.total, "After 11AM — Buy": after.buy, "After 11AM — Sell": after.sell,
-        "After 11AM — Closed": after.closed, "After 11AM — Win Rate %": after.closed ? Math.round((after.wins / after.closed) * 100) : "",
+        "After 11AM — Closed": after.closed, "After 11AM — Favorable (open)": after.favorable, "After 11AM — Unfavorable (open)": after.unfavorable,
+        "After 11AM — Win Rate %": after.closed ? Math.round((after.wins / after.closed) * 100) : "",
         "After 11AM — Net P&L (Rs)": after.closed ? Math.round(after.netPnl * 100) / 100 : "",
         "Day Net P&L (Rs)": (before.closed + after.closed) ? Math.round((before.netPnl + after.netPnl) * 100) / 100 : "",
       };
@@ -1589,10 +1623,12 @@
     sessionRows.push({
       "Date": `TOTAL (${dateFrom} to ${dateTo})`,
       "Before 11AM — Signals": overall.before.total, "Before 11AM — Buy": overall.before.buy, "Before 11AM — Sell": overall.before.sell,
-      "Before 11AM — Closed": overall.before.closed, "Before 11AM — Win Rate %": overall.before.closed ? Math.round((overall.before.wins / overall.before.closed) * 100) : "",
+      "Before 11AM — Closed": overall.before.closed, "Before 11AM — Favorable (open)": overall.before.favorable, "Before 11AM — Unfavorable (open)": overall.before.unfavorable,
+      "Before 11AM — Win Rate %": overall.before.closed ? Math.round((overall.before.wins / overall.before.closed) * 100) : "",
       "Before 11AM — Net P&L (Rs)": overall.before.closed ? Math.round(overall.before.netPnl * 100) / 100 : "",
       "After 11AM — Signals": overall.after.total, "After 11AM — Buy": overall.after.buy, "After 11AM — Sell": overall.after.sell,
-      "After 11AM — Closed": overall.after.closed, "After 11AM — Win Rate %": overall.after.closed ? Math.round((overall.after.wins / overall.after.closed) * 100) : "",
+      "After 11AM — Closed": overall.after.closed, "After 11AM — Favorable (open)": overall.after.favorable, "After 11AM — Unfavorable (open)": overall.after.unfavorable,
+      "After 11AM — Win Rate %": overall.after.closed ? Math.round((overall.after.wins / overall.after.closed) * 100) : "",
       "After 11AM — Net P&L (Rs)": overall.after.closed ? Math.round(overall.after.netPnl * 100) / 100 : "",
       "Day Net P&L (Rs)": (overall.before.closed + overall.after.closed) ? Math.round((overall.before.netPnl + overall.after.netPnl) * 100) / 100 : "",
     });
