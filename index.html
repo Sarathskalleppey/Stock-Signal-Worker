@@ -236,7 +236,7 @@
 
   .signal-row {
     display: grid;
-    grid-template-columns: 66px 1fr 92px 108px 108px 100px 132px;
+    grid-template-columns: 66px 1fr 92px 128px 118px 100px 132px;
     align-items: center;
     gap: 12px;
     background: var(--bg-panel);
@@ -299,9 +299,15 @@
     display: inline-block;
   }
   .status-tag.open { background: rgba(232, 179, 79, 0.12); color: var(--amber); }
-  .status-tag.target_hit { background: rgba(61, 220, 151, 0.12); color: var(--green); }
+  .status-tag.target_1_hit,
+  .status-tag.target_2_hit,
+  .status-tag.target_3_hit,
+  .status-tag.trail_stop_hit { background: rgba(61, 220, 151, 0.12); color: var(--green); }
   .status-tag.stoploss_hit { background: rgba(255, 107, 92, 0.12); color: var(--red); }
+  .status-tag.breakeven_stop_hit { background: rgba(139, 150, 168, 0.12); color: var(--text-secondary); }
   .status-tag.eod_close { background: rgba(139, 150, 168, 0.12); color: var(--text-secondary); }
+  .sig-levels .tp.hit { opacity: 0.55; }
+  .sig-levels .tp .tick { color: var(--green); }
 
   .sig-time { text-align: right; color: var(--text-dim); font-size: 11px; }
   .sig-time .exact { color: var(--text-secondary); }
@@ -466,6 +472,61 @@
     #chartContainer { height: 320px; }
   }
 
+  /* ---------- Accuracy (before/after 11am) modal ---------- */
+  .accuracy-box { max-width: 760px; }
+  .accuracy-note { font-size: 11px; color: var(--text-dim); margin-bottom: 16px; line-height: 1.6; }
+  .accuracy-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .accuracy-period {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .accuracy-period-title {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: var(--text-primary);
+  }
+  .accuracy-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; color: var(--text-secondary); }
+  .accuracy-row b { color: var(--text-primary); font-weight: 600; }
+  .accuracy-row.pos b { color: var(--green); }
+  .accuracy-row.neg b { color: var(--red); }
+  .accuracy-empty { padding: 30px; text-align: center; color: var(--text-dim); font-size: 13px; grid-column: 1 / -1; }
+
+  .accuracy-daily-wrap { overflow-y: auto; max-height: 320px; border: 1px solid var(--border); border-radius: 8px; }
+  table.accuracy-daily { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  table.accuracy-daily th, table.accuracy-daily td {
+    padding: 8px 10px;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  table.accuracy-daily th:first-child, table.accuracy-daily td:first-child { text-align: left; }
+  table.accuracy-daily thead th {
+    position: sticky; top: 0;
+    background: var(--bg-panel);
+    color: var(--text-dim);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 9.5px;
+  }
+  table.accuracy-daily tbody tr:hover { background: rgba(255,255,255,0.03); }
+  table.accuracy-daily .pos { color: var(--green); }
+  table.accuracy-daily .neg { color: var(--red); }
+  table.accuracy-daily .total-cell { font-weight: 700; }
+  table.accuracy-daily .sub { color: var(--text-dim); font-size: 9.5px; }
+
+  @media (max-width: 700px) {
+    .accuracy-summary { grid-template-columns: 1fr; }
+  }
+
   @media (max-width: 900px) {
     .signal-row {
       grid-template-columns: 1fr;
@@ -529,6 +590,10 @@
       <button class="stat-card stat-card-btn" id="exportExcelBtn">
         <div class="stat-label">⬇ Export Daily P&amp;L</div>
         <div class="stat-value" style="font-size:14px;">Date range</div>
+      </button>
+      <button class="stat-card stat-card-btn" id="accuracyTrigger">
+        <div class="stat-label">⏰ Before / After 11 AM</div>
+        <div class="stat-value" style="font-size:14px;">Accuracy study</div>
       </button>
     </div>
 
@@ -619,6 +684,27 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="accuracyModal">
+    <div class="movers-box accuracy-box">
+      <div class="movers-header">
+        <div class="movers-title">Signal Accuracy — Before vs After 11:00 AM</div>
+        <button class="movers-close" id="closeAccuracy">✕</button>
+      </div>
+      <div class="accuracy-note">
+        Split by generation time (IST). Win rate = % of CLOSED signals with positive P&amp;L.
+        Uses the FULL date range below, not just the 300 shown on screen.
+        Range: <span id="accuracyRange">—</span>
+      </div>
+      <div class="accuracy-summary" id="accuracySummary">
+        <div class="accuracy-empty">Loading…</div>
+      </div>
+      <div class="feed-title" style="margin:16px 0 8px;">Daily Net P&amp;L</div>
+      <div class="accuracy-daily-wrap">
+        <table class="accuracy-daily" id="accuracyDaily"></table>
+      </div>
+    </div>
+  </div>
+
 <script>
   // ---- Configure your backend URL here ----
   const API_BASE = window.SIGNAL_API_BASE || "https://facilitate-vacuum-dubai-magazines.trycloudflare.com";
@@ -661,9 +747,14 @@
 
   const STATUS_LABELS = {
     open: "LIVE",
-    target_hit: "TARGET HIT",
+    target_1_hit: "TARGET 1 HIT",
+    target_2_hit: "TARGET 2 HIT",
+    target_3_hit: "TARGET 3 HIT",
     stoploss_hit: "STOP-LOSS HIT",
+    breakeven_stop_hit: "BREAKEVEN STOP",
+    trail_stop_hit: "TRAIL STOP HIT",
     eod_close: "EOD CLOSE",
+    target_hit: "TARGET HIT",  // legacy rows from before the 3-target ladder
   };
 
   async function fetchHealth() {
@@ -749,10 +840,27 @@
     }
 
     container.innerHTML = `<div class="signal-list">` + filtered.map(s => {
+      const tier = Number(s.tier || 0);
       const pnlKnown = s.pnl_amount !== null && s.pnl_amount !== undefined;
-      const pnlClass = pnlKnown ? (Number(s.pnl_amount) >= 0 ? "pos" : "neg") : "";
+      const realized = Number(s.realized_pnl_amount || 0);
+      // Once closed, pnl_amount is the final combined figure. While still
+      // open, show whatever's already been LOCKED IN from earlier partial
+      // exits (target_1/target_2 hit) rather than a bare "—", since that's
+      // real, already-realized money even though the trade isn't done.
+      const showAmount = pnlKnown ? Number(s.pnl_amount) : (tier > 0 ? realized : null);
+      const pnlClass = showAmount != null ? (showAmount >= 0 ? "pos" : "neg") : "";
       const statusTag = STATUS_LABELS[s.status === "open" ? "open" : s.exit_reason] || s.status;
       const statusClass = s.status === "open" ? "open" : (s.exit_reason || "");
+
+      // SL label reflects the ratcheted stop: breakeven after target_1,
+      // trailed to target_1's price after target_2.
+      const activeStop = s.active_stop_loss != null ? Number(s.active_stop_loss) : (s.stop_loss != null ? Number(s.stop_loss) : null);
+      const slLabel = tier >= 2 ? 'SL→T1' : tier >= 1 ? 'SL→BE' : 'SL';
+      const tgt = (n, price) => {
+        const hit = tier >= n;
+        const val = price != null ? '₹' + Number(price).toFixed(2) : '—';
+        return `<div class="tp${hit ? ' hit' : ''}">T${n} ${val}${hit ? ' <span class="tick">✓</span>' : ''}</div>`;
+      };
 
       return `
       <div class="signal-row">
@@ -766,12 +874,17 @@
           <div class="sig-sub">entry</div>
         </div>
         <div class="sig-levels">
-          <div class="sl">SL ₹${s.stop_loss != null ? Number(s.stop_loss).toFixed(2) : '—'}</div>
-          <div class="tp">TP ₹${s.target_profit != null ? Number(s.target_profit).toFixed(2) : '—'}</div>
+          <div class="sl">${slLabel} ₹${activeStop != null ? activeStop.toFixed(2) : '—'}</div>
+          ${tgt(1, s.target_profit)}
+          ${s.target_profit_2 != null ? tgt(2, s.target_profit_2) : ''}
+          ${s.target_profit_3 != null ? tgt(3, s.target_profit_3) : ''}
         </div>
         <div class="sig-pnl ${pnlClass}">
-          ${pnlKnown ? '₹' + Number(s.pnl_amount).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
-          <div class="sig-sub"><span class="status-tag ${statusClass}">${statusTag}</span></div>
+          ${showAmount != null ? '₹' + showAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
+          <div class="sig-sub">
+            <span class="status-tag ${statusClass}">${statusTag}</span>
+            ${!pnlKnown && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
+          </div>
         </div>
         <div class="sig-tf" style="text-align:center;color:var(--amber);font-size:11px;">${s.timeframe}</div>
         <div class="sig-time">
@@ -1012,6 +1125,132 @@
     return all;
   }
 
+  // ---- Accuracy study: before vs after 11:00 AM IST -----------------
+  // ---- Shared by the on-screen modal AND the Excel export, so both  ----
+  // ---- agree exactly. Always pulls the FULL date range via          ----
+  // ---- fetchFullRange (never the 300-row on-screen cap).            ----
+  function istHourOf(iso) {
+    const d = new Date(new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    return d.getHours();
+  }
+
+  function emptyPeriodBucket() {
+    return { total: 0, buy: 0, sell: 0, closed: 0, open: 0, wins: 0, netPnl: 0 };
+  }
+
+  function addToBucket(b, s, pnl, isClosed) {
+    b.total += 1;
+    if (s.signal_type === 'BUY') b.buy += 1; else b.sell += 1;
+    if (isClosed) {
+      b.closed += 1;
+      b.netPnl += pnl;
+      if (pnl > 0) b.wins += 1;
+    } else {
+      b.open += 1;
+    }
+  }
+
+  // rows -> { overall: {before, after}, byDay: {date: {before, after}} }
+  function computeAccuracy(rows) {
+    const overall = { before: emptyPeriodBucket(), after: emptyPeriodBucket() };
+    const byDay = {};
+    rows.forEach(s => {
+      if (!s.generated_at) return;
+      const day = s.generated_date || s.generated_at.slice(0, 10);
+      const period = istHourOf(s.generated_at) < 11 ? 'before' : 'after';
+      const isClosed = s.status === 'closed' && s.pnl_amount != null;
+      const pnl = isClosed ? Number(s.pnl_amount) : 0;
+      if (!byDay[day]) byDay[day] = { before: emptyPeriodBucket(), after: emptyPeriodBucket() };
+      addToBucket(overall[period], s, pnl, isClosed);
+      addToBucket(byDay[day][period], s, pnl, isClosed);
+    });
+    return { overall, byDay };
+  }
+
+  function winRateLabel(b) {
+    return b.closed ? `${Math.round((b.wins / b.closed) * 100)}%` : '—';
+  }
+  function pnlLabel(n) {
+    return '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  }
+
+  function renderAccuracySummary(overall) {
+    const el = document.getElementById('accuracySummary');
+    if (overall.before.total === 0 && overall.after.total === 0) {
+      el.innerHTML = `<div class="accuracy-empty">No signals in this range.</div>`;
+      return;
+    }
+    const card = (title, b) => {
+      const pnlClass = b.netPnl > 0 ? 'pos' : b.netPnl < 0 ? 'neg' : '';
+      return `
+      <div class="accuracy-period">
+        <div class="accuracy-period-title">${title}</div>
+        <div class="accuracy-row"><span>Signals generated</span><b>${b.total}</b></div>
+        <div class="accuracy-row"><span>Buy · Sell</span><b>${b.buy} · ${b.sell}</b></div>
+        <div class="accuracy-row"><span>Closed · Still open</span><b>${b.closed} · ${b.open}</b></div>
+        <div class="accuracy-row"><span>Win rate (of closed)</span><b>${winRateLabel(b)}</b></div>
+        <div class="accuracy-row ${pnlClass}"><span>Net P&amp;L</span><b>${b.closed ? pnlLabel(b.netPnl) : '—'}</b></div>
+        <div class="accuracy-row"><span>Avg P&amp;L / closed signal</span><b>${b.closed ? pnlLabel(Math.round(b.netPnl / b.closed)) : '—'}</b></div>
+      </div>`;
+    };
+    el.innerHTML = card('Before 11:00 AM', overall.before) + card('After 11:00 AM', overall.after);
+  }
+
+  function renderAccuracyDaily(byDay) {
+    const table = document.getElementById('accuracyDaily');
+    const days = Object.keys(byDay).sort().reverse();
+    if (days.length === 0) {
+      table.innerHTML = '';
+      return;
+    }
+    const rows = days.map(day => {
+      const { before, after } = byDay[day];
+      const dayTotal = before.netPnl + after.netPnl;
+      const dayClosed = before.closed + after.closed;
+      const totalClass = dayTotal > 0 ? 'pos' : dayTotal < 0 ? 'neg' : '';
+      return `
+      <tr>
+        <td>${day}</td>
+        <td>${before.total}<div class="sub">${winRateLabel(before)} win</div></td>
+        <td class="${before.netPnl > 0 ? 'pos' : before.netPnl < 0 ? 'neg' : ''}">${before.closed ? pnlLabel(before.netPnl) : '—'}</td>
+        <td>${after.total}<div class="sub">${winRateLabel(after)} win</div></td>
+        <td class="${after.netPnl > 0 ? 'pos' : after.netPnl < 0 ? 'neg' : ''}">${after.closed ? pnlLabel(after.netPnl) : '—'}</td>
+        <td class="total-cell ${totalClass}">${dayClosed ? pnlLabel(dayTotal) : '—'}</td>
+      </tr>`;
+    }).join('');
+    table.innerHTML = `
+      <thead><tr>
+        <th>Date</th><th>Before 11AM</th><th>P&amp;L</th><th>After 11AM</th><th>P&amp;L</th><th>Day Net P&amp;L</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>`;
+  }
+
+  async function openAccuracy() {
+    document.getElementById('accuracyModal').classList.add('show');
+    document.getElementById('accuracySummary').innerHTML = `<div class="accuracy-empty">Loading full range…</div>`;
+    document.getElementById('accuracyDaily').innerHTML = '';
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    document.getElementById('accuracyRange').textContent =
+      dateFrom ? `${dateFrom} to ${dateTo || todayIST()}` : 'last 30 days (no "From" date set)';
+    try {
+      const rows = await fetchFullRange(dateFrom, dateTo);
+      const { overall, byDay } = computeAccuracy(rows);
+      renderAccuracySummary(overall);
+      renderAccuracyDaily(byDay);
+    } catch (e) {
+      document.getElementById('accuracySummary').innerHTML =
+        `<div class="accuracy-empty">Couldn't load the full range. Check the backend is reachable.</div>`;
+    }
+  }
+
+  document.getElementById('accuracyTrigger').addEventListener('click', openAccuracy);
+  document.getElementById('closeAccuracy').addEventListener('click', () =>
+    document.getElementById('accuracyModal').classList.remove('show'));
+  document.getElementById('accuracyModal').addEventListener('click', e => {
+    if (e.target.id === 'accuracyModal') document.getElementById('accuracyModal').classList.remove('show');
+  });
+
   document.getElementById('exportExcelBtn').addEventListener('click', async () => {
     const dateFrom = document.getElementById('dateFrom').value;
     const dateTo = document.getElementById('dateTo').value || todayIST();
@@ -1100,12 +1339,17 @@
         "Indicator": s.indicator,
         "Timeframe": s.timeframe,
         "Entry Price": s.entry_price,
-        "Stop Loss": s.stop_loss,
-        "Target Profit": s.target_profit,
+        "Stop Loss (Original)": s.stop_loss,
+        "Stop Loss (Current)": s.active_stop_loss ?? s.stop_loss,
+        "Target 1 (2:1 min)": s.target_profit,
+        "Target 2": s.target_profit_2 ?? "",
+        "Target 3": s.target_profit_3 ?? "",
+        "Targets Hit": s.tier ?? 0,
         "Investment (Rs)": s.investment_amount,
         "Status": s.status,
         "Exit Reason": s.exit_reason || "",
-        "Exit Price": s.exit_price ?? "",
+        "Exit Price (Final Tranche)": s.exit_price ?? "",
+        "Realized So Far (Rs)": s.realized_pnl_amount ?? "",
         "P&L (Rs)": s.pnl_amount ?? "",
         "P&L (%)": s.pnl_percent ?? "",
       }));
@@ -1113,6 +1357,34 @@
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Daily P&L Summary");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), "Signal Detail");
+
+    // Sheet 3: same full range, split before/after 11:00 AM IST per day --
+    // for studying which half of the day produces more accurate signals.
+    const { overall, byDay } = computeAccuracy(rows);
+    const sessionRows = Object.keys(byDay).sort().map(day => {
+      const { before, after } = byDay[day];
+      return {
+        "Date": day,
+        "Before 11AM — Signals": before.total, "Before 11AM — Buy": before.buy, "Before 11AM — Sell": before.sell,
+        "Before 11AM — Closed": before.closed, "Before 11AM — Win Rate %": before.closed ? Math.round((before.wins / before.closed) * 100) : "",
+        "Before 11AM — Net P&L (Rs)": before.closed ? Math.round(before.netPnl * 100) / 100 : "",
+        "After 11AM — Signals": after.total, "After 11AM — Buy": after.buy, "After 11AM — Sell": after.sell,
+        "After 11AM — Closed": after.closed, "After 11AM — Win Rate %": after.closed ? Math.round((after.wins / after.closed) * 100) : "",
+        "After 11AM — Net P&L (Rs)": after.closed ? Math.round(after.netPnl * 100) / 100 : "",
+        "Day Net P&L (Rs)": (before.closed + after.closed) ? Math.round((before.netPnl + after.netPnl) * 100) / 100 : "",
+      };
+    });
+    sessionRows.push({
+      "Date": `TOTAL (${dateFrom} to ${dateTo})`,
+      "Before 11AM — Signals": overall.before.total, "Before 11AM — Buy": overall.before.buy, "Before 11AM — Sell": overall.before.sell,
+      "Before 11AM — Closed": overall.before.closed, "Before 11AM — Win Rate %": overall.before.closed ? Math.round((overall.before.wins / overall.before.closed) * 100) : "",
+      "Before 11AM — Net P&L (Rs)": overall.before.closed ? Math.round(overall.before.netPnl * 100) / 100 : "",
+      "After 11AM — Signals": overall.after.total, "After 11AM — Buy": overall.after.buy, "After 11AM — Sell": overall.after.sell,
+      "After 11AM — Closed": overall.after.closed, "After 11AM — Win Rate %": overall.after.closed ? Math.round((overall.after.wins / overall.after.closed) * 100) : "",
+      "After 11AM — Net P&L (Rs)": overall.after.closed ? Math.round(overall.after.netPnl * 100) / 100 : "",
+      "Day Net P&L (Rs)": (overall.before.closed + overall.after.closed) ? Math.round((overall.before.netPnl + overall.after.netPnl) * 100) / 100 : "",
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sessionRows), "Before vs After 11AM");
 
     XLSX.writeFile(wb, `SignalDesk_PnL_${dateFrom}_to_${dateTo}.xlsx`);
   });
