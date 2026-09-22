@@ -523,6 +523,51 @@
   table.accuracy-daily .total-cell { font-weight: 700; }
   table.accuracy-daily .sub { color: var(--text-dim); font-size: 9.5px; }
 
+  /* ---------- Live signal direction modal ---------- */
+  .direction-lists {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .direction-col {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    max-height: 360px;
+    overflow-y: auto;
+  }
+  .direction-col-title {
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .direction-col-title.favor { color: var(--green); }
+  .direction-col-title.against { color: var(--red); }
+  .direction-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11.5px;
+  }
+  .direction-item:last-child { border-bottom: none; }
+  .direction-item .d-symbol { font-weight: 600; color: var(--text-primary); }
+  .direction-item .d-sub { color: var(--text-dim); font-size: 10px; grid-column: 1 / -1; }
+  .direction-item .d-pct { text-align: right; font-weight: 700; align-self: center; }
+  .direction-item .d-pct.pos { color: var(--green); }
+  .direction-item .d-pct.neg { color: var(--red); }
+  .direction-empty-col { padding: 20px; text-align: center; color: var(--text-dim); font-size: 12px; }
+
+  @media (max-width: 700px) {
+    .direction-lists { grid-template-columns: 1fr; }
+  }
+
   @media (max-width: 700px) {
     .accuracy-summary { grid-template-columns: 1fr; }
   }
@@ -594,6 +639,10 @@
       <button class="stat-card stat-card-btn" id="accuracyTrigger">
         <div class="stat-label">⏰ Before / After 11 AM</div>
         <div class="stat-value" style="font-size:14px;">Accuracy study</div>
+      </button>
+      <button class="stat-card stat-card-btn" id="directionTrigger">
+        <div class="stat-label">🎯 Live Signal Direction</div>
+        <div class="stat-value" style="font-size:14px;">In favor vs against</div>
       </button>
     </div>
 
@@ -702,6 +751,24 @@
       <div class="accuracy-daily-wrap">
         <table class="accuracy-daily" id="accuracyDaily"></table>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="directionModal">
+    <div class="movers-box accuracy-box">
+      <div class="movers-header">
+        <div class="movers-title">Live Signal Direction — In Favor vs Against</div>
+        <button class="movers-close" id="closeDirection">✕</button>
+      </div>
+      <div class="accuracy-note">
+        Every currently OPEN signal, compared to its live price right now. "In favor" = price has moved
+        the way the signal needs (up for BUY, down for SELL) since entry; "against" = the opposite.
+        Uses today's full signal list, not just the 300 shown on screen. As of: <span id="directionAsOf">—</span>
+      </div>
+      <div class="accuracy-summary" id="directionSummary">
+        <div class="accuracy-empty">Loading…</div>
+      </div>
+      <div class="direction-lists" id="directionLists"></div>
     </div>
   </div>
 
@@ -1268,6 +1335,94 @@
     document.getElementById('accuracyModal').classList.remove('show'));
   document.getElementById('accuracyModal').addEventListener('click', e => {
     if (e.target.id === 'accuracyModal') document.getElementById('accuracyModal').classList.remove('show');
+  });
+
+  // ---- Live signal direction: every OPEN signal right now, compared to  ----
+  // ---- its live price -- how many stocks have moved the way the signal  ----
+  // ---- needs (in favor) vs the opposite (against), with the full list.  ----
+  // ---- Always today's full open-signal set (nothing stays open past     ----
+  // ---- EOD by design), independent of the main date filter.             ----
+  function computeDirection(openSignals, moversBySymbol) {
+    const favor = [], against = [], unknown = [];
+    openSignals.forEach(s => {
+      const m = moversBySymbol[s.trading_symbol];
+      if (!m || m.ltp == null) { unknown.push(s); return; }
+      const ltp = Number(m.ltp);
+      const entry = Number(s.entry_price);
+      const pct = s.signal_type === 'BUY' ? (ltp - entry) / entry * 100 : (entry - ltp) / entry * 100;
+      const item = { ...s, ltp, pct };
+      (pct >= 0 ? favor : against).push(item);
+    });
+    favor.sort((a, b) => b.pct - a.pct);
+    against.sort((a, b) => a.pct - b.pct);  // worst (most against) first
+    return { favor, against, unknown };
+  }
+
+  function directionItemHtml(s) {
+    return `
+      <div class="direction-item">
+        <div class="d-symbol">${s.trading_symbol}</div>
+        <div class="d-pct ${s.pct >= 0 ? 'pos' : 'neg'}">${s.pct >= 0 ? '+' : ''}${s.pct.toFixed(2)}%</div>
+        <div class="d-sub">${s.signal_type} · ${s.timeframe} · entry ₹${Number(s.entry_price).toFixed(2)} → now ₹${s.ltp.toFixed(2)}</div>
+      </div>`;
+  }
+
+  function renderDirection(favor, against, unknown) {
+    const summary = document.getElementById('directionSummary');
+    const total = favor.length + against.length;
+    summary.innerHTML = total === 0 ? `<div class="accuracy-empty">No open signals right now.</div>` : `
+      <div class="accuracy-period">
+        <div class="accuracy-period-title" style="color:var(--green)">In Favor</div>
+        <div class="accuracy-row pos"><span>Stocks</span><b>${favor.length}</b></div>
+        <div class="accuracy-row"><span>Share of open signals</span><b>${Math.round(favor.length / total * 100)}%</b></div>
+      </div>
+      <div class="accuracy-period">
+        <div class="accuracy-period-title" style="color:var(--red)">Against</div>
+        <div class="accuracy-row neg"><span>Stocks</span><b>${against.length}</b></div>
+        <div class="accuracy-row"><span>Share of open signals</span><b>${Math.round(against.length / total * 100)}%</b></div>
+      </div>`;
+
+    const lists = document.getElementById('directionLists');
+    lists.innerHTML = `
+      <div class="direction-col">
+        <div class="direction-col-title favor">✓ In Favor (${favor.length})</div>
+        ${favor.length ? favor.map(directionItemHtml).join('') : '<div class="direction-empty-col">None right now.</div>'}
+      </div>
+      <div class="direction-col">
+        <div class="direction-col-title against">✕ Against (${against.length})</div>
+        ${against.length ? against.map(directionItemHtml).join('') : '<div class="direction-empty-col">None right now.</div>'}
+      </div>` +
+      (unknown.length ? `<div class="accuracy-note" style="grid-column:1/-1; margin-top:10px;">${unknown.length} open signal(s) skipped — no live price available for them right now.</div>` : '');
+  }
+
+  async function openDirection() {
+    document.getElementById('directionModal').classList.add('show');
+    document.getElementById('directionSummary').innerHTML = `<div class="accuracy-empty">Loading…</div>`;
+    document.getElementById('directionLists').innerHTML = '';
+    document.getElementById('directionAsOf').textContent = fmtExactTime(new Date().toISOString());
+    try {
+      const today = todayIST();
+      const [rows, moversRes] = await Promise.all([
+        fetchFullRange(today, today),
+        fetch(`${API_BASE}/market-movers`),
+      ]);
+      const movers = await moversRes.json();
+      const openSignals = rows.filter(s => s.status === 'open');
+      const moversBySymbol = {};
+      (Array.isArray(movers) ? movers : []).forEach(m => { moversBySymbol[m.symbol] = m; });
+      const { favor, against, unknown } = computeDirection(openSignals, moversBySymbol);
+      renderDirection(favor, against, unknown);
+    } catch (e) {
+      document.getElementById('directionSummary').innerHTML =
+        `<div class="accuracy-empty">Couldn't load live prices. Check the backend is reachable.</div>`;
+    }
+  }
+
+  document.getElementById('directionTrigger').addEventListener('click', openDirection);
+  document.getElementById('closeDirection').addEventListener('click', () =>
+    document.getElementById('directionModal').classList.remove('show'));
+  document.getElementById('directionModal').addEventListener('click', e => {
+    if (e.target.id === 'directionModal') document.getElementById('directionModal').classList.remove('show');
   });
 
   document.getElementById('exportExcelBtn').addEventListener('click', async () => {
