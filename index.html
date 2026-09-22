@@ -24,6 +24,7 @@
     --amber: #E8B34F;
     --bg-tint-1: rgba(232, 179, 79, 0.05);
     --bg-tint-2: rgba(61, 220, 151, 0.04);
+    --hover-tint: rgba(255, 255, 255, 0.03);
     --font-display: 'Space Grotesk', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
   }
@@ -44,6 +45,7 @@
     --amber: #FFD600;
     --bg-tint-1: rgba(255, 214, 0, 0.08);
     --bg-tint-2: rgba(0, 255, 163, 0.07);
+    --hover-tint: rgba(255, 255, 255, 0.05);
   }
 
   /* Executive Slate — charcoal + warm gold, boardroom terminal */
@@ -62,6 +64,7 @@
     --amber: #C9A24B;
     --bg-tint-1: rgba(201, 162, 75, 0.05);
     --bg-tint-2: rgba(79, 174, 138, 0.04);
+    --hover-tint: rgba(255, 255, 255, 0.03);
   }
 
   /* Deep Emerald — forest green + copper, private trading floor */
@@ -80,6 +83,45 @@
     --amber: #D9A55C;
     --bg-tint-1: rgba(217, 165, 92, 0.06);
     --bg-tint-2: rgba(74, 222, 158, 0.05);
+    --hover-tint: rgba(255, 255, 255, 0.03);
+  }
+
+  /* Royal Navy — deep navy blue + gold, classic regal pairing */
+  :root[data-theme="navy"] {
+    --bg: #050B1A;
+    --bg-panel: #0C1830;
+    --bg-panel-hover: #122140;
+    --border: #1E3A66;
+    --text-primary: #ECF1FF;
+    --text-secondary: #93A8CC;
+    --text-dim: #52698F;
+    --green: #34D399;
+    --green-dim: #1B6B4C;
+    --red: #F0685C;
+    --red-dim: #7A2E27;
+    --amber: #D4AF37;
+    --bg-tint-1: rgba(212, 175, 55, 0.05);
+    --bg-tint-2: rgba(52, 211, 153, 0.04);
+    --hover-tint: rgba(255, 255, 255, 0.04);
+  }
+
+  /* White Classic — light mode */
+  :root[data-theme="white"] {
+    --bg: #F5F6F8;
+    --bg-panel: #FFFFFF;
+    --bg-panel-hover: #EEF1F5;
+    --border: #DDE2EA;
+    --text-primary: #14181F;
+    --text-secondary: #4A5568;
+    --text-dim: #8792A2;
+    --green: #0EA968;
+    --green-dim: #C9F0DE;
+    --red: #DC3D32;
+    --red-dim: #FBD9D6;
+    --amber: #A6790C;
+    --bg-tint-1: rgba(166, 121, 12, 0.05);
+    --bg-tint-2: rgba(14, 169, 104, 0.04);
+    --hover-tint: rgba(0, 0, 0, 0.035);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -96,15 +138,39 @@
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  .theme-picker { display: flex; gap: 7px; align-items: center; }
-  .theme-dot {
-    width: 18px; height: 18px; border-radius: 50%;
-    border: 2px solid transparent; cursor: pointer; padding: 0;
-    background: conic-gradient(var(--sw1) 0deg 120deg, var(--sw2) 120deg 240deg, var(--sw3) 240deg 360deg);
-    transition: transform 0.15s ease, border-color 0.15s ease;
+  .status-pill-wrap { position: relative; }
+  .dot-btn {
+    background: none; border: none; padding: 6px; margin: -6px;
+    cursor: pointer; display: flex; align-items: center; border-radius: 50%;
   }
-  .theme-dot:hover { transform: scale(1.18); }
-  .theme-dot.active { border-color: var(--text-primary); }
+  .dot-btn:hover { background: var(--hover-tint); }
+
+  .theme-menu {
+    display: none;
+    position: absolute; top: calc(100% + 8px); right: 0;
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 6px; min-width: 172px; z-index: 50;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  .theme-menu.show { display: block; }
+  .theme-menu-title {
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-dim); padding: 6px 8px 4px;
+  }
+  .theme-menu-item {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; text-align: left;
+    background: none; border: none; border-radius: 6px;
+    padding: 7px 8px; font-family: var(--font-mono); font-size: 12px;
+    color: var(--text-secondary); cursor: pointer;
+  }
+  .theme-menu-item:hover { background: var(--hover-tint); color: var(--text-primary); }
+  .theme-menu-item.active { color: var(--text-primary); font-weight: 600; }
+  .theme-swatch {
+    width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+    background: conic-gradient(var(--sw1) 0deg 120deg, var(--sw2) 120deg 240deg, var(--sw3) 240deg 360deg);
+    border: 1px solid var(--border);
+  }
 
   .wrap { max-width: 1400px; margin: 0 auto; display: flex; gap: 24px; align-items: flex-start; }
   .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: calc(100vh - 84px); }
@@ -517,7 +583,7 @@
     cursor: pointer;
     transition: background 0.1s ease;
   }
-  .movers-row:hover { background: rgba(255,255,255,0.03); }
+  .movers-row:hover { background: var(--hover-tint); }
   .movers-row.has-signal { background: rgba(255, 176, 32, 0.06); }
   .movers-row .m-symbol { font-weight: 600; }
   .movers-row .m-name { color: var(--text-dim); font-size: 10.5px; }
@@ -657,7 +723,7 @@
     letter-spacing: 0.04em;
     font-size: 9.5px;
   }
-  table.accuracy-daily tbody tr:hover { background: rgba(255,255,255,0.03); }
+  table.accuracy-daily tbody tr:hover { background: var(--hover-tint); }
   table.accuracy-daily .pos { color: var(--green); }
   table.accuracy-daily .neg { color: var(--red); }
   table.accuracy-daily .total-cell { font-weight: 700; }
@@ -707,7 +773,7 @@
     border-radius: 6px;
     transition: background 0.1s ease;
   }
-  .direction-item:hover { background: rgba(255,255,255,0.04); }
+  .direction-item:hover { background: var(--hover-tint); }
   .direction-item:last-child { border-bottom: none; }
   .direction-item .d-symbol { font-weight: 600; color: var(--text-primary); text-decoration: underline dotted var(--text-dim); text-underline-offset: 3px; }
   .direction-item .d-sub { color: var(--text-dim); font-size: 10px; grid-column: 1 / -1; }
@@ -809,15 +875,22 @@
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
         <div style="font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-dim);">Built by Sarath Sreekumar</div>
-        <div class="theme-picker" id="themePicker">
-          <button class="theme-dot active" data-theme="" style="--sw1:#0B1220;--sw2:#3DDC97;--sw3:#E8B34F;" title="Classic"></button>
-          <button class="theme-dot" data-theme="neon" style="--sw1:#0A0118;--sw2:#00FFA3;--sw3:#FF3D7F;" title="Neon Pulse"></button>
-          <button class="theme-dot" data-theme="slate" style="--sw1:#0D0D0F;--sw2:#C9A24B;--sw3:#4FAE8A;" title="Executive Slate"></button>
-          <button class="theme-dot" data-theme="emerald" style="--sw1:#071410;--sw2:#4ADE9E;--sw3:#D9A55C;" title="Deep Emerald"></button>
-        </div>
-        <div class="status-pill" id="statusPill">
-          <div class="dot" id="statusDot"></div>
-          <span id="statusText">Connecting…</span>
+        <div class="status-pill-wrap">
+          <div class="status-pill" id="statusPill">
+            <button class="dot-btn" id="themeMenuTrigger" title="Click to change theme">
+              <div class="dot" id="statusDot"></div>
+            </button>
+            <span id="statusText">Connecting…</span>
+          </div>
+          <div class="theme-menu" id="themeMenu">
+            <div class="theme-menu-title">Theme</div>
+            <button class="theme-menu-item active" data-theme=""><span class="theme-swatch" style="--sw1:#0B1220;--sw2:#3DDC97;--sw3:#E8B34F;"></span>Classic</button>
+            <button class="theme-menu-item" data-theme="neon"><span class="theme-swatch" style="--sw1:#0A0118;--sw2:#00FFA3;--sw3:#FF3D7F;"></span>Neon Pulse</button>
+            <button class="theme-menu-item" data-theme="slate"><span class="theme-swatch" style="--sw1:#0D0D0F;--sw2:#C9A24B;--sw3:#4FAE8A;"></span>Executive Slate</button>
+            <button class="theme-menu-item" data-theme="emerald"><span class="theme-swatch" style="--sw1:#071410;--sw2:#4ADE9E;--sw3:#D9A55C;"></span>Deep Emerald</button>
+            <button class="theme-menu-item" data-theme="navy"><span class="theme-swatch" style="--sw1:#050B1A;--sw2:#D4AF37;--sw3:#34D399;"></span>Royal Navy</button>
+            <button class="theme-menu-item" data-theme="white"><span class="theme-swatch" style="--sw1:#F5F6F8;--sw2:#0EA968;--sw3:#A6790C;"></span>White Classic</button>
+          </div>
         </div>
       </div>
     </header>
@@ -975,19 +1048,35 @@
 
   document.getElementById('apiBaseLabel').textContent = API_BASE;
 
-  // ---- Theme picker: swaps the CSS custom-property palette in :root[data-theme].
-  // Remembered per-browser (localStorage); wrapped in try/catch since it can
-  // throw in private-browsing/blocked-storage contexts -- theme just won't
-  // persist there, which is fine. ----
+  // ---- Theme menu: swaps the CSS custom-property palette in :root[data-theme].
+  // Hidden behind the small status dot -- click it to open the list, click a
+  // theme to apply it, click anywhere outside (or the dot again) to close.
+  // Choice is remembered per-browser (localStorage), wrapped in try/catch
+  // since it can throw in private-browsing/blocked-storage contexts -- theme
+  // just won't persist there, which is fine. ----
+  const themeMenu = document.getElementById('themeMenu');
+
   function applyTheme(theme) {
     if (theme) document.documentElement.setAttribute('data-theme', theme);
     else document.documentElement.removeAttribute('data-theme');
-    document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === theme));
+    document.querySelectorAll('.theme-menu-item').forEach(item => item.classList.toggle('active', item.dataset.theme === theme));
     try { localStorage.setItem('signalDeskTheme', theme); } catch (e) {}
   }
-  document.getElementById('themePicker').addEventListener('click', e => {
-    const dot = e.target.closest('.theme-dot');
-    if (dot) applyTheme(dot.dataset.theme);
+  function toggleThemeMenu(show) {
+    themeMenu.classList.toggle('show', show ?? !themeMenu.classList.contains('show'));
+  }
+  document.getElementById('themeMenuTrigger').addEventListener('click', e => {
+    e.stopPropagation();
+    toggleThemeMenu();
+  });
+  themeMenu.addEventListener('click', e => {
+    const item = e.target.closest('.theme-menu-item');
+    if (!item) return;
+    applyTheme(item.dataset.theme);
+    toggleThemeMenu(false);
+  });
+  document.addEventListener('click', e => {
+    if (!themeMenu.contains(e.target) && e.target.id !== 'themeMenuTrigger') toggleThemeMenu(false);
   });
   (function initTheme() {
     let saved = '';
