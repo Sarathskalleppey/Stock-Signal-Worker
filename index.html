@@ -278,6 +278,29 @@
   }
   .sig-badge.buy { background: rgba(61, 220, 151, 0.12); color: var(--green); }
   .sig-badge.sell { background: rgba(255, 107, 92, 0.12); color: var(--red); }
+  .sig-badge.strong-buy, .sig-badge.strong-sell {
+    width: auto;
+    padding: 4px 8px;
+    white-space: nowrap;
+    border: 1px solid;
+  }
+  .sig-badge.strong-buy { background: rgba(61, 220, 151, 0.18); color: var(--green); border-color: var(--green); }
+  .sig-badge.strong-sell { background: rgba(255, 107, 92, 0.18); color: var(--red); border-color: var(--red); }
+
+  .strong-row { border-left: 2px solid var(--amber); }
+  .strong-detail {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .strong-detail b { color: var(--text-primary); font-weight: 600; }
+  .strong-detail b.pos { color: var(--green); }
 
   .sig-symbol {
     font-weight: 600;
@@ -681,9 +704,11 @@
 
     <div class="filters">
       <div class="filter-group" id="signalFilter">
-        <div class="chip active" data-signal="ALL">All signals</div>
-        <div class="chip" data-signal="BUY">Buy only</div>
-        <div class="chip" data-signal="SELL">Sell only</div>
+        <div class="chip active" data-signal="ALL">All</div>
+        <div class="chip" data-signal="STRONG_BUY">🔥 Strong Buy</div>
+        <div class="chip" data-signal="BUY">Buy</div>
+        <div class="chip" data-signal="SELL">Sell</div>
+        <div class="chip" data-signal="STRONG_SELL">🔥 Strong Sell</div>
       </div>
       <div class="filter-group" id="statusFilter">
         <div class="chip active" data-status="ALL">All status</div>
@@ -895,9 +920,23 @@
     }
   }
 
+  // The 4 categories partition every signal exactly once: strength ('strong'
+  // vs everything else, including rows from before this feature shipped
+  // which default to 'normal') combined with direction.
+  function matchesSignalFilter(s, filter) {
+    const isStrong = s.strength === 'strong';
+    switch (filter) {
+      case 'STRONG_BUY': return s.signal_type === 'BUY' && isStrong;
+      case 'STRONG_SELL': return s.signal_type === 'SELL' && isStrong;
+      case 'BUY': return s.signal_type === 'BUY' && !isStrong;
+      case 'SELL': return s.signal_type === 'SELL' && !isStrong;
+      default: return true;
+    }
+  }
+
   function filteredSignals() {
     return allSignals.filter(s => {
-      if (activeSignalFilter !== "ALL" && s.signal_type !== activeSignalFilter) return false;
+      if (!matchesSignalFilter(s, activeSignalFilter)) return false;
       if (activeStatusFilter === "open" && s.status !== "open") return false;
       if (activeStatusFilter === "closed" && s.status !== "closed") return false;
       if (activeTfFilter !== "ALL" && s.timeframe !== activeTfFilter) return false;
@@ -907,10 +946,13 @@
   }
 
   function renderStats() {
-    const buys = allSignals.filter(s => s.signal_type === "BUY").length;
-    const sells = allSignals.filter(s => s.signal_type === "SELL").length;
+    const strongBuy = allSignals.filter(s => matchesSignalFilter(s, 'STRONG_BUY')).length;
+    const buy = allSignals.filter(s => matchesSignalFilter(s, 'BUY')).length;
+    const sell = allSignals.filter(s => matchesSignalFilter(s, 'SELL')).length;
+    const strongSell = allSignals.filter(s => matchesSignalFilter(s, 'STRONG_SELL')).length;
     document.getElementById('statCount').textContent = allSignals.length;
-    document.getElementById('statBuySell').textContent = `${buys} buy · ${sells} sell`;
+    document.getElementById('statBuySell').textContent =
+      `🔥${strongBuy} buy · ${buy} buy · ${sell} sell · 🔥${strongSell} sell`;
 
     const closed = allSignals.filter(s => s.status === "closed" && s.pnl_amount != null);
     const netPnl = closed.reduce((sum, s) => sum + Number(s.pnl_amount), 0);
@@ -957,9 +999,13 @@
         return `<div class="tp${hit ? ' hit' : ''}">T${n} ${val}${hit ? ' <span class="tick">✓</span>' : ''}</div>`;
       };
 
+      const isStrong = s.strength === 'strong';
+      const badgeClass = s.signal_type === 'BUY' ? (isStrong ? 'strong-buy' : 'buy') : (isStrong ? 'strong-sell' : 'sell');
+      const badgeLabel = (isStrong ? '🔥 STRONG ' : '') + s.signal_type;
+
       return `
-      <div class="signal-row">
-        <div class="sig-badge ${s.signal_type === 'BUY' ? 'buy' : 'sell'}">${s.signal_type}</div>
+      <div class="signal-row${isStrong ? ' strong-row' : ''}">
+        <div class="sig-badge ${badgeClass}">${badgeLabel}</div>
         <div>
           <div class="sig-symbol" data-symbol="${s.trading_symbol}" data-tf="${s.timeframe}">${s.trading_symbol}</div>
           <div class="sig-sub">${s.indicator} · ${s.name || ''}</div>
@@ -986,6 +1032,13 @@
           <div class="exact">${fmtExactTime(s.generated_at)}</div>
           <div class="ago">${timeAgo(s.generated_at)}</div>
         </div>
+        ${isStrong ? `
+        <div class="strong-detail">
+          <span>4H Trend <b class="pos">${s.trend_4h === 'up' ? '▲ Up' : s.trend_4h === 'down' ? '▼ Down' : '—'}</b></span>
+          <span>VWAP <b class="pos">Favor</b></span>
+          <span>Volume <b class="pos">Favor</b></span>
+          <span>4H RSI <b class="pos">Favor${s.rsi_4h_value != null ? ` (${Number(s.rsi_4h_value).toFixed(1)})` : ''}</b></span>
+        </div>` : ''}
       </div>
     `;
     }).join('') + `</div>`;
@@ -1576,6 +1629,12 @@
         "Symbol": s.trading_symbol,
         "Name": s.name || "",
         "Signal": s.signal_type,
+        "Strength": s.strength === 'strong' ? 'STRONG' : 'normal',
+        "4H Trend": s.trend_4h || "",
+        "VWAP": s.vwap_status || "",
+        "Volume": s.volume_status || "",
+        "4H RSI": s.rsi_4h_status || "",
+        "4H RSI Value": s.rsi_4h_value ?? "",
         "Indicator": s.indicator,
         "Timeframe": s.timeframe,
         "Entry Price": s.entry_price,
