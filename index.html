@@ -735,6 +735,18 @@
     });
   }
 
+  // Everything on this dashboard is shown in IST, always -- regardless of
+  // the viewer's own device/browser timezone. This is the fallback used
+  // only if a row is ever missing its server-computed generated_date;
+  // slicing the raw UTC ISO string would give the wrong calendar day for
+  // anything generated between IST midnight and 5:29 AM (not a live issue
+  // today, since signals only ever fire during NSE hours, but correct
+  // regardless of when that changes).
+  function istDateOf(iso) {
+    if (!iso) return "";
+    return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  }
+
   function timeAgo(iso) {
     if (!iso) return "no data yet";
     const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -1163,7 +1175,7 @@
     const byDay = {};
     rows.forEach(s => {
       if (!s.generated_at) return;
-      const day = s.generated_date || s.generated_at.slice(0, 10);
+      const day = s.generated_date || istDateOf(s.generated_at);
       const period = istHourOf(s.generated_at) < 11 ? 'before' : 'after';
       const isClosed = s.status === 'closed' && s.pnl_amount != null;
       const pnl = isClosed ? Number(s.pnl_amount) : 0;
@@ -1292,7 +1304,7 @@
     // Sheet 1: one row per trading day across the whole requested range.
     const byDate = {};
     rows.forEach(s => {
-      const day = s.generated_date || (s.generated_at || "").slice(0, 10);
+      const day = s.generated_date || istDateOf(s.generated_at);
       if (!day) return;
       if (!byDate[day]) {
         byDate[day] = { date: day, total: 0, buy: 0, sell: 0, closed: 0, open: 0, targetHit: 0, stoplossHit: 0, eodClose: 0, netPnl: 0 };
@@ -1338,7 +1350,7 @@
     const detailRows = [...rows]
       .sort((a, b) => new Date(a.generated_at) - new Date(b.generated_at))
       .map(s => ({
-        "Date": s.generated_date || (s.generated_at || "").slice(0, 10),
+        "Date": s.generated_date || istDateOf(s.generated_at),
         "Generated At": fmtExactTime(s.generated_at),
         "Symbol": s.trading_symbol,
         "Name": s.name || "",
