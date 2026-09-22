@@ -115,7 +115,19 @@
     flex-shrink: 0;
     position: sticky;
     top: 24px;
+    /* More stat cards than fit on a shorter screen used to just get cut
+       off at the viewport edge with no way to reach the rest -- scroll
+       the sidebar itself instead. */
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    padding-right: 4px;   /* room for the scrollbar so it doesn't sit on the border */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
   }
+  .stats::-webkit-scrollbar { width: 6px; }
+  .stats::-webkit-scrollbar-track { background: transparent; }
+  .stats::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .stats::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
   .stat-card {
     background: var(--bg-panel);
@@ -588,6 +600,8 @@
       width: 100%;
       flex-wrap: wrap;
       position: static;
+      max-height: none;
+      overflow-y: visible;
     }
     .stat-card { flex: 1 1 calc(50% - 6px); }
   }
