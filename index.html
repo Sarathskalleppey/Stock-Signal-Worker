@@ -286,8 +286,17 @@
   }
   .sig-badge.strong-buy { background: rgba(61, 220, 151, 0.18); color: var(--green); border-color: var(--green); }
   .sig-badge.strong-sell { background: rgba(255, 107, 92, 0.18); color: var(--red); border-color: var(--red); }
+  .sig-badge.buy-triggered, .sig-badge.sell-triggered {
+    width: auto;
+    padding: 4px 8px;
+    white-space: nowrap;
+    background: rgba(139, 150, 168, 0.12);
+    color: var(--text-dim);
+  }
 
   .strong-row { border-left: 2px solid var(--amber); }
+  .triggered-row { opacity: 0.7; }
+  .triggered-row:hover { opacity: 1; }
   .strong-detail {
     grid-column: 1 / -1;
     display: flex;
@@ -728,6 +737,8 @@
         <div class="chip" data-signal="BUY">Buy</div>
         <div class="chip" data-signal="SELL">Sell</div>
         <div class="chip" data-signal="STRONG_SELL">🔥 Strong Sell</div>
+        <div class="chip" data-signal="BUY_TRIGGERED">Buy Triggered</div>
+        <div class="chip" data-signal="SELL_TRIGGERED">Sell Triggered</div>
       </div>
       <div class="filter-group" id="statusFilter">
         <div class="chip active" data-status="ALL">All status</div>
@@ -753,9 +764,10 @@
 
     <div id="directionTab" style="display:none;">
       <div class="accuracy-note" style="margin-bottom:14px;">
-        Every currently OPEN signal, compared to its live price right now -- from any day, since a signal only
-        closes on its stop-loss or a target. "In favor" = price has moved the way the signal needs (up for BUY,
-        down for SELL) since entry; "against" = the opposite. Click any stock to open its chart. As of:
+        Every currently OPEN Buy/Sell/Strong Buy/Strong Sell signal (Triggered signals excluded -- ADX hasn't
+        confirmed a real trend for those), compared to its live price right now -- from any day, since a signal
+        only closes on its stop-loss or a target. "In favor" = price has moved the way the signal needs (up for
+        BUY, down for SELL) since entry; "against" = the opposite. Click any stock to open its chart. As of:
         <span id="directionAsOf">—</span>
       </div>
       <div class="accuracy-summary" id="directionSummary">
@@ -820,7 +832,8 @@
       </div>
       <div class="accuracy-note">
         Split by generation time (IST). Win rate = % of CLOSED signals with positive P&amp;L.
-        Uses the FULL date range below, not just the 300 shown on screen.
+        Uses the FULL date range below, not just the 300 shown on screen. Buy/Sell Triggered signals
+        (ADX hasn't confirmed a real trend) are excluded throughout.
         Range: <span id="accuracyRange">—</span>
       </div>
       <div class="accuracy-summary" id="accuracySummary">
@@ -842,7 +855,8 @@
       <div class="accuracy-note">
         Realized P&amp;L from closed signals, plus live mark-to-market P&amp;L from every still-open signal
         (already-booked partial exits + unrealized move on the remaining quantity at current LTP).
-        Same 300-row / date-filtered set as the sidebar stat.
+        Same 300-row / date-filtered set as the sidebar stat. Buy/Sell Triggered signals (ADX hasn't confirmed
+        a real trend) are never counted here.
       </div>
       <div class="accuracy-summary" id="pnlSummary">
         <div class="accuracy-empty">Loading…</div>
@@ -964,18 +978,41 @@
     }
   }
 
-  // The 4 categories partition every signal exactly once: strength ('strong'
-  // vs everything else, including rows from before this feature shipped
-  // which default to 'normal') combined with direction.
+  // Every signal always fires on its EMA9/26 crossover regardless of any of
+  // this -- these are labels only. The 6 categories below partition every
+  // signal exactly once:
+  //   adx_status !== 'favor'  -> Triggered (raw crossover; ADX doesn't
+  //                              confirm a real trend yet -- could still be
+  //                              inside a choppy/range-bound market)
+  //   adx_status === 'favor' + strength 'strong' -> Strong Buy/Sell
+  //   adx_status === 'favor' + everything else    -> Buy/Sell (confirmed)
+  // Rows from before ADX tracking existed default adx_status to 'unknown',
+  // which correctly falls into Triggered (we never actually confirmed a
+  // trend for them).
+  function isAdxConfirmed(s) {
+    return s.adx_status === 'favor';
+  }
+
   function matchesSignalFilter(s, filter) {
     const isStrong = s.strength === 'strong';
+    const confirmed = isAdxConfirmed(s);
     switch (filter) {
-      case 'STRONG_BUY': return s.signal_type === 'BUY' && isStrong;
-      case 'STRONG_SELL': return s.signal_type === 'SELL' && isStrong;
-      case 'BUY': return s.signal_type === 'BUY' && !isStrong;
-      case 'SELL': return s.signal_type === 'SELL' && !isStrong;
+      case 'STRONG_BUY': return s.signal_type === 'BUY' && confirmed && isStrong;
+      case 'STRONG_SELL': return s.signal_type === 'SELL' && confirmed && isStrong;
+      case 'BUY': return s.signal_type === 'BUY' && confirmed && !isStrong;
+      case 'SELL': return s.signal_type === 'SELL' && confirmed && !isStrong;
+      case 'BUY_TRIGGERED': return s.signal_type === 'BUY' && !confirmed;
+      case 'SELL_TRIGGERED': return s.signal_type === 'SELL' && !confirmed;
       default: return true;
     }
+  }
+
+  // P&L, Live Signal Direction, and the Accuracy view all only count
+  // ADX-confirmed signals (Buy/Sell/Strong Buy/Strong Sell) -- a Triggered
+  // signal never fired on a confirmed trend, so it's excluded everywhere
+  // performance is measured.
+  function countsTowardPnl(s) {
+    return isAdxConfirmed(s);
   }
 
   function filteredSignals() {
@@ -1011,17 +1048,22 @@
     const buy = allSignals.filter(s => matchesSignalFilter(s, 'BUY')).length;
     const sell = allSignals.filter(s => matchesSignalFilter(s, 'SELL')).length;
     const strongSell = allSignals.filter(s => matchesSignalFilter(s, 'STRONG_SELL')).length;
+    const buyTriggered = allSignals.filter(s => matchesSignalFilter(s, 'BUY_TRIGGERED')).length;
+    const sellTriggered = allSignals.filter(s => matchesSignalFilter(s, 'SELL_TRIGGERED')).length;
     document.getElementById('statCount').textContent = allSignals.length;
     document.getElementById('statBuySell').textContent =
-      `🔥${strongBuy} buy · ${buy} buy · ${sell} sell · 🔥${strongSell} sell`;
+      `🔥${strongBuy} buy · ${buy} buy · ${sell} sell · 🔥${strongSell} sell · ${buyTriggered}+${sellTriggered} triggered`;
 
-    const closed = allSignals.filter(s => s.status === "closed" && s.pnl_amount != null);
+    // Triggered signals (ADX hasn't confirmed a real trend) never count
+    // toward P&L -- only Buy/Sell/Strong Buy/Strong Sell do.
+    const counted = allSignals.filter(countsTowardPnl);
+    const closed = counted.filter(s => s.status === "closed" && s.pnl_amount != null);
     const closedPnl = closed.reduce((sum, s) => sum + Number(s.pnl_amount), 0);
-    const open = allSignals.filter(s => s.status === "open");
+    const open = counted.filter(s => s.status === "open");
     const openPnl = open.reduce((sum, s) => sum + provisionalPnl(s, moversBySymbol), 0);
     const netPnl = closedPnl + openPnl;
     const pnlEl = document.getElementById('statPnl');
-    pnlEl.textContent = allSignals.length
+    pnlEl.textContent = counted.length
       ? `₹${netPnl.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
       : "—";
     pnlEl.className = "stat-value " + (netPnl > 0 ? "pos" : netPnl < 0 ? "neg" : "");
@@ -1030,16 +1072,18 @@
   // ---- Net P&L detail: same 300-row/date-filtered set as the sidebar   ----
   // ---- stat, split into what's actually realized (closed) vs what's    ----
   // ---- still live (open, mark-to-market) -- the two numbers behind the ----
-  // ---- single net figure.                                              ----
+  // ---- single net figure. Triggered signals are excluded throughout    ----
+  // ---- (see countsTowardPnl).                                          ----
   function renderPnlDetail() {
     const el = document.getElementById('pnlSummary');
     const cls = n => n > 0 ? 'pos' : n < 0 ? 'neg' : '';
 
-    const closed = allSignals.filter(s => s.status === "closed" && s.pnl_amount != null);
+    const counted = allSignals.filter(countsTowardPnl);
+    const closed = counted.filter(s => s.status === "closed" && s.pnl_amount != null);
     const closedPnl = closed.reduce((sum, s) => sum + Number(s.pnl_amount), 0);
     const wins = closed.filter(s => Number(s.pnl_amount) > 0).length;
 
-    const open = allSignals.filter(s => s.status === "open");
+    const open = counted.filter(s => s.status === "open");
     const openPnls = open.map(s => provisionalPnl(s, lastMoversBySymbol));
     const openPnl = openPnls.reduce((sum, n) => sum + n, 0);
     const favorable = openPnls.filter(n => n >= 0).length;
@@ -1059,7 +1103,7 @@
         <div class="accuracy-row"><span>Favorable · Unfavorable</span><b><span class="pos">${favorable}</span> · <span class="neg">${open.length - favorable}</span></b></div>
         <div class="accuracy-row ${cls(openPnl)}"><span>Provisional P&amp;L</span><b>${open.length ? pnlLabel(openPnl) : '—'}</b></div>
       </div>
-      <div class="pnl-total ${cls(netPnl)}"><span>Net P&amp;L (closed + open)</span><b>${pnlLabel(netPnl)}</b></div>
+      <div class="pnl-total ${cls(netPnl)}"><span>Net P&amp;L (closed + open)</span><b>${counted.length ? pnlLabel(netPnl) : '—'}</b></div>
     `;
   }
 
@@ -1111,12 +1155,17 @@
         return `<div class="tp${hit ? ' hit' : ''}">T${n} ${val}${hit ? ' <span class="tick">✓</span>' : ''}</div>`;
       };
 
-      const isStrong = s.strength === 'strong';
-      const badgeClass = s.signal_type === 'BUY' ? (isStrong ? 'strong-buy' : 'buy') : (isStrong ? 'strong-sell' : 'sell');
-      const badgeLabel = (isStrong ? '🔥 STRONG ' : '') + s.signal_type;
+      const confirmed = isAdxConfirmed(s);
+      const isStrong = s.strength === 'strong' && confirmed;
+      const isTriggered = !confirmed;
+      const badgeClass = s.signal_type === 'BUY'
+        ? (isStrong ? 'strong-buy' : isTriggered ? 'buy-triggered' : 'buy')
+        : (isStrong ? 'strong-sell' : isTriggered ? 'sell-triggered' : 'sell');
+      const badgeLabel = (isStrong ? '🔥 STRONG ' : '') + s.signal_type + (isTriggered ? ' TRIGGERED' : '');
+      const adxLabel = s.adx_value != null ? Number(s.adx_value).toFixed(1) : '—';
 
       return `
-      <div class="signal-row${isStrong ? ' strong-row' : ''}">
+      <div class="signal-row${isStrong ? ' strong-row' : ''}${isTriggered ? ' triggered-row' : ''}">
         <div class="sig-badge ${badgeClass}">${badgeLabel}</div>
         <div>
           <div class="sig-symbol" data-symbol="${s.trading_symbol}" data-tf="${s.timeframe}">${s.trading_symbol}</div>
@@ -1133,19 +1182,23 @@
           ${s.target_profit_3 != null ? tgt(3, s.target_profit_3) : ''}
         </div>
         <div class="sig-pnl ${pnlClass}">
-          ${showAmount != null ? '₹' + showAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
+          ${isTriggered ? '—' : (showAmount != null ? '₹' + showAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—')}
           <div class="sig-sub">
-            <span class="status-tag ${statusClass}">${statusTag}</span>
-            ${!pnlKnown && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
+            <span class="status-tag ${statusClass}">${isTriggered ? 'not counted' : statusTag}</span>
+            ${!isTriggered && !pnlKnown && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
           </div>
         </div>
-        <div class="sig-tf" style="text-align:center;color:var(--amber);font-size:11px;">${s.timeframe}</div>
+        <div class="sig-tf" style="text-align:center;color:var(--amber);font-size:11px;">
+          ${s.timeframe}
+          <div class="sig-sub" style="margin-top:2px;">ADX ${adxLabel}</div>
+        </div>
         <div class="sig-time">
           <div class="exact">${fmtExactTime(s.generated_at)}</div>
           <div class="ago">${timeAgo(s.generated_at)}</div>
         </div>
         ${isStrong ? `
         <div class="strong-detail">
+          <span>ADX <b class="pos">${adxLabel} (trending)</b></span>
           <span>4H Trend <b class="pos">${s.trend_4h === 'up' ? '▲ Up' : s.trend_4h === 'down' ? '▼ Down' : '—'}</b></span>
           <span>VWAP <b class="pos">Favor</b></span>
           <span>Volume <b class="pos">Favor</b></span>
@@ -1530,7 +1583,8 @@
       dateFrom ? `${dateFrom} to ${dateTo || todayIST()}` : 'last 30 days (no "From" date set)';
     try {
       const [rows, moversBySymbol] = await Promise.all([fetchFullRange(dateFrom, dateTo), fetchMoversBySymbol()]);
-      const { overall, byDay } = computeAccuracy(rows, moversBySymbol);
+      // Buy/Sell Triggered signals are never counted in the accuracy study.
+      const { overall, byDay } = computeAccuracy(rows.filter(countsTowardPnl), moversBySymbol);
       renderAccuracySummary(overall);
       renderAccuracyDaily(byDay);
     } catch (e) {
@@ -1649,7 +1703,10 @@
       const movers = await moversRes.json();
       const moversBySymbol = {};
       (Array.isArray(movers) ? movers : []).forEach(m => { moversBySymbol[m.symbol] = m; });
-      const { favor, against, unknown, byTf } = computeDirection(openSignals, moversBySymbol);
+      // Buy/Sell Triggered signals (ADX hasn't confirmed a real trend) are
+      // never counted in Live Signal Direction.
+      const confirmedOpenSignals = openSignals.filter(countsTowardPnl);
+      const { favor, against, unknown, byTf } = computeDirection(confirmedOpenSignals, moversBySymbol);
       renderDirection(favor, against, unknown, byTf);
     } catch (e) {
       document.getElementById('directionSummary').innerHTML =
@@ -1739,7 +1796,8 @@
         if (s.exit_reason === "target_hit") d.targetHit += 1;
         if (s.exit_reason === "stoploss_hit") d.stoplossHit += 1;
         if (s.exit_reason === "eod_close") d.eodClose += 1;
-        if (s.pnl_amount != null) d.netPnl += Number(s.pnl_amount);
+        // Buy/Sell Triggered signals never count toward Net P&L.
+        if (s.pnl_amount != null && countsTowardPnl(s)) d.netPnl += Number(s.pnl_amount);
       }
     });
     const summaryRows = Object.values(byDate)
@@ -1775,7 +1833,9 @@
         "Symbol": s.trading_symbol,
         "Name": s.name || "",
         "Signal": s.signal_type,
-        "Strength": s.strength === 'strong' ? 'STRONG' : 'normal',
+        "Tier": !countsTowardPnl(s) ? 'TRIGGERED' : (s.strength === 'strong' ? 'STRONG' : 'confirmed'),
+        "ADX Status": s.adx_status || "",
+        "ADX Value": s.adx_value ?? "",
         "4H Trend": s.trend_4h || "",
         "VWAP": s.vwap_status || "",
         "Volume": s.volume_status || "",
@@ -1809,7 +1869,8 @@
     // only meaningful for today's still-open signals -- older days are
     // already fully closed and show blank there.
     const exportMovers = await fetchMoversBySymbol();
-    const { overall, byDay } = computeAccuracy(rows, exportMovers);
+    // Buy/Sell Triggered signals are never counted in the accuracy study.
+    const { overall, byDay } = computeAccuracy(rows.filter(countsTowardPnl), exportMovers);
     const sessionRows = Object.keys(byDay).sort().map(day => {
       const { before, after } = byDay[day];
       return {
