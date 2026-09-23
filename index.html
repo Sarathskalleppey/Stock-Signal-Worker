@@ -1209,10 +1209,10 @@
         <button class="movers-close" id="closeDailyFav">✕</button>
       </div>
       <div class="accuracy-note">
-        One row per date, by GENERATION date (IST). Favorable = signal closed with positive P&amp;L, unfavorable =
-        closed at a loss or breakeven -- still-open signals aren't counted in the ratio (shown separately). All
-        timeframes. Uses the FULL date range below, not just the 300 shown on screen. Buy/Sell Triggered signals
-        (ADX hasn't confirmed a real trend) are excluded throughout.
+        One row per date PER TIMEFRAME (5m and 15m shown separately), by GENERATION date (IST). Favorable = signal
+        closed with positive P&amp;L, unfavorable = closed at a loss or breakeven -- still-open signals aren't
+        counted in the ratio (shown separately). Uses the FULL date range below, not just the 300 shown on screen.
+        Buy/Sell Triggered signals (ADX hasn't confirmed a real trend) are excluded throughout.
         Range: <span id="dailyFavRange">—</span>
       </div>
       <div class="accuracy-daily-wrap">
@@ -2168,24 +2168,30 @@
     if (e.target.id === 'accuracyModal') document.getElementById('accuracyModal').classList.remove('show');
   });
 
-  // ---- Daily Favorable/Unfavorable history: one row per GENERATION date, ----
-  // ---- all timeframes -- "favorable" = closed with positive P&L,          ----
-  // ---- "unfavorable" = closed at a loss/breakeven (this is win-rate,      ----
+  // ---- Daily Favorable/Unfavorable history: one row per GENERATION date  ----
+  // ---- PER TIMEFRAME, 5m and 15m kept separate (not blended) -- exactly  ----
+  // ---- the same reasoning as the Time of Day tab: a 5m signal's win rate  ----
+  // ---- and a 15m signal's win rate are different things, averaging them  ----
+  // ---- together would hide that. "Favorable" = closed with positive     ----
+  // ---- P&L, "unfavorable" = closed at a loss/breakeven (this is win-rate, ----
   // ---- reframed as a ratio, since a PAST day's open-signal favor/against  ----
   // ---- snapshot isn't something the app records -- only right-now's is,  ----
   // ---- see Live Direction). Still-open signals for a day are shown       ----
   // ---- separately, not folded into the ratio.                            ----
+  const DAILY_FAV_TIMEFRAMES = ['5m', '15m'];
+
   function emptyDailyFavBucket() {
     return { total: 0, favorable: 0, unfavorable: 0, open: 0 };
   }
 
   function computeDailyFavorable(rows) {
-    const byDay = {};
-    rows.forEach(s => {
+    const byDayTf = {};
+    rows.filter(s => DAILY_FAV_TIMEFRAMES.includes(s.timeframe)).forEach(s => {
       if (!s.generated_at) return;
       const day = s.generated_date || istDateOf(s.generated_at);
-      if (!byDay[day]) byDay[day] = emptyDailyFavBucket();
-      const b = byDay[day];
+      const key = `${day}|${s.timeframe}`;
+      if (!byDayTf[key]) byDayTf[key] = { day, timeframe: s.timeframe, ...emptyDailyFavBucket() };
+      const b = byDayTf[key];
       b.total += 1;
       const isClosed = s.status === 'closed' && s.pnl_amount != null;
       if (isClosed) {
@@ -2194,7 +2200,7 @@
         b.open += 1;
       }
     });
-    return byDay;
+    return byDayTf;
   }
 
   function ratioLabel(b) {
@@ -2204,19 +2210,23 @@
     return `${favPct}:${100 - favPct}`;
   }
 
-  function renderDailyFavorable(byDay) {
+  function renderDailyFavorable(byDayTf) {
     const table = document.getElementById('dailyFavTable');
-    const days = Object.keys(byDay).sort().reverse();
-    if (days.length === 0) {
-      table.innerHTML = `<tbody><tr><td class="accuracy-empty" colspan="6">No signals in this range.</td></tr></tbody>`;
+    const keys = Object.keys(byDayTf).sort((a, b) =>
+      byDayTf[b].day.localeCompare(byDayTf[a].day) ||
+      DAILY_FAV_TIMEFRAMES.indexOf(byDayTf[a].timeframe) - DAILY_FAV_TIMEFRAMES.indexOf(byDayTf[b].timeframe)
+    );
+    if (keys.length === 0) {
+      table.innerHTML = `<tbody><tr><td class="accuracy-empty" colspan="7">No 5m/15m signals in this range.</td></tr></tbody>`;
       return;
     }
-    const rows = days.map(day => {
-      const b = byDay[day];
+    const rows = keys.map(key => {
+      const b = byDayTf[key];
       const ratioClass = b.favorable > b.unfavorable ? 'pos' : b.unfavorable > b.favorable ? 'neg' : '';
       return `
       <tr>
-        <td>${day}</td>
+        <td>${b.day}</td>
+        <td>${b.timeframe}</td>
         <td>${b.total}</td>
         <td class="pos">${b.favorable}</td>
         <td class="neg">${b.unfavorable}</td>
@@ -2226,7 +2236,7 @@
     }).join('');
     table.innerHTML = `
       <thead><tr>
-        <th>Date</th><th>Signals</th><th>Favorable</th><th>Unfavorable</th><th>Ratio (F:U)</th><th>Still Open</th>
+        <th>Date</th><th>TF</th><th>Signals</th><th>Favorable</th><th>Unfavorable</th><th>Ratio (F:U)</th><th>Still Open</th>
       </tr></thead>
       <tbody>${rows}</tbody>`;
   }
@@ -2244,7 +2254,7 @@
       renderDailyFavorable(computeDailyFavorable(rows.filter(countsTowardPnl)));
     } catch (e) {
       document.getElementById('dailyFavTable').innerHTML =
-        `<tbody><tr><td class="accuracy-empty" colspan="6">Couldn't load the full range. Check the backend is reachable.</td></tr></tbody>`;
+        `<tbody><tr><td class="accuracy-empty" colspan="7">Couldn't load the full range. Check the backend is reachable.</td></tr></tbody>`;
     }
   }
 
