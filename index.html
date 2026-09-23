@@ -529,6 +529,17 @@
   .status-tag.trail_stop_hit { background: rgba(61, 220, 151, 0.12); color: var(--green); }
   .status-tag.stoploss_hit { background: rgba(255, 107, 92, 0.12); color: var(--red); }
   .status-tag.breakeven_stop_hit { background: rgba(139, 150, 168, 0.12); color: var(--text-secondary); }
+
+  /* Strict multi-layer filter (5m/15m only — see backend signals/strict_filter.py):
+     EMA50 + higher-timeframe trend, VWAP, ADX rising past threshold + DI
+     direction, ATR expansion, EMA9/26 gap widening, all mandatory, plus a
+     09:30-14:45 IST window. A label only (never changes whether a signal
+     fires) so real P&L on these can be compared against everything else. */
+  .strict-badge {
+    display: inline-block; margin-top: 3px; font-size: 9px; letter-spacing: 0.04em;
+    text-transform: uppercase; padding: 1px 5px; border-radius: 4px;
+    background: rgba(61, 220, 151, 0.14); color: var(--green); border: 1px solid rgba(61, 220, 151, 0.35);
+  }
   .status-tag.eod_close { background: rgba(139, 150, 168, 0.12); color: var(--text-secondary); }
   .sig-levels .tp.hit { opacity: 0.55; }
   .sig-levels .tp .tick { color: var(--green); }
@@ -1033,6 +1044,9 @@
         <div class="chip" data-status="open">Live (open)</div>
         <div class="chip" data-status="closed">Closed</div>
       </div>
+      <div class="filter-group" id="strictFilter">
+        <div class="chip" data-strict="1" title="5m/15m only: EMA50 + higher-timeframe trend, VWAP, ADX rising past threshold, DI direction, ATR expansion, EMA9/26 gap widening, all mandatory, plus a 09:30-14:45 IST window">✓ Strict only (5m/15m)</div>
+      </div>
       <input type="date" class="date-input" id="dateFrom" title="From date">
       <input type="date" class="date-input" id="dateTo" title="To date (leave blank for today)">
       <input class="search-input" id="symbolSearch" placeholder="Filter by symbol…">
@@ -1225,6 +1239,7 @@
   let lastMoversBySymbol = {};  // set on every fetchSignals() -- the live LTPs behind the Net P&L stat
   let activeSignalFilter = "ALL";
   let activeStatusFilter = "ALL";
+  let strictOnly = false;
   let activeTfFilter = "ALL";
   let symbolQuery = "";
 
@@ -1375,6 +1390,7 @@
       if (!matchesSignalFilter(s, activeSignalFilter)) return false;
       if (activeStatusFilter === "open" && s.status !== "open") return false;
       if (activeStatusFilter === "closed" && s.status !== "closed") return false;
+      if (strictOnly && !s.passed_strict_filter) return false;
       if (activeTfFilter !== "ALL" && s.timeframe !== activeTfFilter) return false;
       if (symbolQuery && !(s.trading_symbol || "").toLowerCase().includes(symbolQuery.toLowerCase())) return false;
       return true;
@@ -1548,6 +1564,7 @@
         <div class="sig-tf">
           ${s.timeframe}
           <div class="sig-sub" style="margin-top:2px;">ADX ${adxLabel}</div>
+          ${(s.timeframe === '5m' || s.timeframe === '15m') && s.passed_strict_filter ? '<div class="strict-badge">✓ Strict</div>' : ''}
         </div>
         <div class="sig-time">
           <div class="exact">${fmtExactTime(s.generated_at)}</div>
@@ -1879,6 +1896,14 @@
     document.querySelectorAll('#statusFilter .chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     activeStatusFilter = chip.dataset.status;
+    renderFeed();
+  });
+
+  document.getElementById('strictFilter').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    chip.classList.toggle('active');
+    strictOnly = chip.classList.contains('active');
     renderFeed();
   });
 
