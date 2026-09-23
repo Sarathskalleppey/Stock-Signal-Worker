@@ -1036,8 +1036,6 @@
         <div class="chip" data-signal="BUY">Buy</div>
         <div class="chip" data-signal="SELL">Sell</div>
         <div class="chip" data-signal="STRONG_SELL">🔥 Strong Sell</div>
-        <div class="chip" data-signal="BUY_TRIGGERED">Buy Triggered</div>
-        <div class="chip" data-signal="SELL_TRIGGERED">Sell Triggered</div>
       </div>
       <div class="filter-group" id="statusFilter">
         <div class="chip active" data-status="ALL">All status</div>
@@ -1349,16 +1347,16 @@
   }
 
   // Every signal always fires on its EMA9/26 crossover regardless of any of
-  // this -- these are labels only. The 6 categories below partition every
-  // signal exactly once:
-  //   adx_status !== 'favor'  -> Triggered (raw crossover; ADX doesn't
-  //                              confirm a real trend yet -- could still be
-  //                              inside a choppy/range-bound market)
+  // this -- these are labels only, computed on the backend from ADX+DI (see
+  // signals/strength.py's classify_adx). We only ever SHOW the confirmed
+  // ones though: a raw crossover the market hasn't actually confirmed a
+  // trend for (or is trending the wrong way, per +DI/-DI) isn't a signal
+  // worth acting on, so "Triggered" rows are filtered out everywhere,
+  // including "All" -- not just hidden from their own filter chip (which no
+  // longer exists). The backend still records every raw crossover
+  // regardless (needed for cooldown/history); this is purely what's shown.
   //   adx_status === 'favor' + strength 'strong' -> Strong Buy/Sell
   //   adx_status === 'favor' + everything else    -> Buy/Sell (confirmed)
-  // Rows from before ADX tracking existed default adx_status to 'unknown',
-  // which correctly falls into Triggered (we never actually confirmed a
-  // trend for them).
   function isAdxConfirmed(s) {
     return s.adx_status === 'favor';
   }
@@ -1366,13 +1364,12 @@
   function matchesSignalFilter(s, filter) {
     const isStrong = s.strength === 'strong';
     const confirmed = isAdxConfirmed(s);
+    if (!confirmed) return false;
     switch (filter) {
-      case 'STRONG_BUY': return s.signal_type === 'BUY' && confirmed && isStrong;
-      case 'STRONG_SELL': return s.signal_type === 'SELL' && confirmed && isStrong;
-      case 'BUY': return s.signal_type === 'BUY' && confirmed && !isStrong;
-      case 'SELL': return s.signal_type === 'SELL' && confirmed && !isStrong;
-      case 'BUY_TRIGGERED': return s.signal_type === 'BUY' && !confirmed;
-      case 'SELL_TRIGGERED': return s.signal_type === 'SELL' && !confirmed;
+      case 'STRONG_BUY': return s.signal_type === 'BUY' && isStrong;
+      case 'STRONG_SELL': return s.signal_type === 'SELL' && isStrong;
+      case 'BUY': return s.signal_type === 'BUY' && !isStrong;
+      case 'SELL': return s.signal_type === 'SELL' && !isStrong;
       default: return true;
     }
   }
@@ -1419,11 +1416,9 @@
     const buy = allSignals.filter(s => matchesSignalFilter(s, 'BUY')).length;
     const sell = allSignals.filter(s => matchesSignalFilter(s, 'SELL')).length;
     const strongSell = allSignals.filter(s => matchesSignalFilter(s, 'STRONG_SELL')).length;
-    const buyTriggered = allSignals.filter(s => matchesSignalFilter(s, 'BUY_TRIGGERED')).length;
-    const sellTriggered = allSignals.filter(s => matchesSignalFilter(s, 'SELL_TRIGGERED')).length;
     document.getElementById('statCount').textContent = allSignals.length;
     document.getElementById('statBuySell').textContent =
-      `🔥${strongBuy} buy · ${buy} buy · ${sell} sell · 🔥${strongSell} sell · ${buyTriggered}+${sellTriggered} triggered`;
+      `🔥${strongBuy} buy · ${buy} buy · ${sell} sell · 🔥${strongSell} sell`;
 
     // Triggered signals (ADX hasn't confirmed a real trend) never count
     // toward P&L -- only Buy/Sell/Strong Buy/Strong Sell do.
