@@ -1309,7 +1309,12 @@
     try {
       const dateFrom = document.getElementById('dateFrom').value;
       const dateTo = document.getElementById('dateTo').value;
-      const params = new URLSearchParams({ limit: '300' });
+      // 300 tracked instruments x 4 timeframes can clear 300 signals well
+      // before midday -- with generated_at.desc ordering, a low cap here
+      // silently drops the OLDEST signals for the selected day (including
+      // ones that already closed on a target/stop hit) off the page. 1000
+      // is the backend's own per-call ceiling (see /history in main.py).
+      const params = new URLSearchParams({ limit: '1000' });
       if (dateFrom) params.set('date_from', dateFrom);
       if (dateTo) params.set('date_to', dateTo);
       const [res, moversBySymbol] = await Promise.all([
