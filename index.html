@@ -601,6 +601,12 @@
     max-height: 82vh;
     display: flex;
     flex-direction: column;
+    /* Content taller than max-height (e.g. 5 Time-of-Day cards + the daily
+       table below them) was silently clipped with no way to reach it --
+       the box itself never scrolled, only specific children like
+       .accuracy-daily-wrap did. */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .movers-header {
     display: flex;
@@ -770,7 +776,13 @@
   .pnl-total.neg b { color: var(--red); }
   .pnl-total b { font-size: 20px; }
 
-  .accuracy-daily-wrap { overflow-y: auto; max-height: 320px; border: 1px solid var(--border); border-radius: 8px; }
+  /* flex-shrink:0 matters here: .movers-box is a flex column, and per the
+     flexbox spec an item whose own overflow isn't "visible" gets an
+     automatic minimum size of 0 -- without this, the parent's new
+     overflow-y:auto (added so tall modals like Time of Day scroll instead
+     of clipping) squeezed this wrapper down to ~1px instead of its real
+     content height. */
+  .accuracy-daily-wrap { overflow-y: auto; max-height: 320px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 8px; }
   table.accuracy-daily { width: 100%; border-collapse: collapse; font-size: 11.5px; }
   table.accuracy-daily th, table.accuracy-daily td {
     padding: 8px 10px;
