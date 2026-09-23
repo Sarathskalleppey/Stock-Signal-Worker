@@ -1004,7 +1004,7 @@
         <div class="stat-value" style="font-size:14px;">Date range</div>
       </button>
       <button class="stat-card stat-card-btn" id="accuracyTrigger">
-        <div class="stat-label">⏰ Before / After 11 AM</div>
+        <div class="stat-label">⏰ Time of Day Accuracy</div>
         <div class="stat-value" style="font-size:14px;">Accuracy study</div>
       </button>
     </div>
@@ -1160,11 +1160,12 @@
   <div class="modal-backdrop" id="accuracyModal">
     <div class="movers-box accuracy-box">
       <div class="movers-header">
-        <div class="movers-title">Signal Accuracy — Before vs After 11:00 AM</div>
+        <div class="movers-title">Signal Accuracy — Time of Day (5m/15m)</div>
         <button class="movers-close" id="closeAccuracy">✕</button>
       </div>
       <div class="accuracy-note">
-        Split by generation time (IST). Win rate = % of CLOSED signals with positive P&amp;L.
+        5m/15m only, split by GENERATION time (IST) into the same windows as the daily 3 PM force-close: before
+        10 AM, 10 AM-1 PM, 1 PM-2 PM, 2 PM-3 PM, and after 3 PM. Win rate = % of CLOSED signals with positive P&amp;L.
         Uses the FULL date range below, not just the 300 shown on screen. Buy/Sell Triggered signals
         (ADX hasn't confirmed a real trend) are excluded throughout.
         Range: <span id="accuracyRange">—</span>
@@ -1984,10 +1985,12 @@
     return all;
   }
 
-  // ---- Accuracy study: before vs after 11:00 AM IST -----------------
-  // ---- Shared by the on-screen modal AND the Excel export, so both  ----
-  // ---- agree exactly. Always pulls the FULL date range via          ----
-  // ---- fetchFullRange (never the 300-row on-screen cap).            ----
+  // ---- Accuracy study: 5m/15m only, same 4 windows + After 3PM as the ----
+  // ---- Time of Day tab (see TOD_BUCKETS/todBucketOf below) -- lines up ----
+  // ---- exactly with the daily 3 PM force-close. Shared by the on-      ----
+  // ---- screen modal AND the Excel export, so both agree exactly.       ----
+  // ---- Always pulls the FULL date range via fetchFullRange (never the  ----
+  // ---- 300-row on-screen cap).                                         ----
   function istHourOf(iso) {
     const d = new Date(new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
     return d.getHours();
@@ -2019,19 +2022,25 @@
     }
   }
 
-  // rows -> { overall: {before, after}, byDay: {date: {before, after}} }
+  // rows -> { overall: {bucketKey: bucket}, byDay: {date: {bucketKey: bucket}} }
+  // 5m/15m only (see TOD_BUCKETS/todBucketOf below) -- filtered here so
+  // every caller automatically stays in scope without remembering to.
   function computeAccuracy(rows, moversBySymbol = {}) {
-    const overall = { before: emptyPeriodBucket(), after: emptyPeriodBucket() };
+    const overall = {};
+    TOD_BUCKETS.forEach(b => { overall[b.key] = emptyPeriodBucket(); });
     const byDay = {};
-    rows.forEach(s => {
+    rows.filter(s => s.timeframe === '5m' || s.timeframe === '15m').forEach(s => {
       if (!s.generated_at) return;
       const day = s.generated_date || istDateOf(s.generated_at);
-      const period = istHourOf(s.generated_at) < 11 ? 'before' : 'after';
+      const bucketKey = todBucketOf(s.generated_at);
       const isClosed = s.status === 'closed' && s.pnl_amount != null;
       const pnl = isClosed ? Number(s.pnl_amount) : 0;
-      if (!byDay[day]) byDay[day] = { before: emptyPeriodBucket(), after: emptyPeriodBucket() };
-      addToBucket(overall[period], s, pnl, isClosed, moversBySymbol);
-      addToBucket(byDay[day][period], s, pnl, isClosed, moversBySymbol);
+      if (!byDay[day]) {
+        byDay[day] = {};
+        TOD_BUCKETS.forEach(b => { byDay[day][b.key] = emptyPeriodBucket(); });
+      }
+      addToBucket(overall[bucketKey], s, pnl, isClosed, moversBySymbol);
+      addToBucket(byDay[day][bucketKey], s, pnl, isClosed, moversBySymbol);
     });
     return { overall, byDay };
   }
@@ -2060,8 +2069,8 @@
 
   function renderAccuracySummary(overall) {
     const el = document.getElementById('accuracySummary');
-    if (overall.before.total === 0 && overall.after.total === 0) {
-      el.innerHTML = `<div class="accuracy-empty">No signals in this range.</div>`;
+    if (TOD_BUCKETS.every(b => overall[b.key].total === 0)) {
+      el.innerHTML = `<div class="accuracy-empty">No 5m/15m signals in this range.</div>`;
       return;
     }
     const card = (title, b) => {
@@ -2079,7 +2088,7 @@
         <div class="accuracy-row"><span>Avg P&amp;L / closed signal</span><b>${b.closed ? pnlLabel(Math.round(b.netPnl / b.closed)) : '—'}</b></div>
       </div>`;
     };
-    el.innerHTML = card('Before 11:00 AM', overall.before) + card('After 11:00 AM', overall.after);
+    el.innerHTML = TOD_BUCKETS.map(bucket => card(bucket.label, overall[bucket.key])).join('');
   }
 
   function renderAccuracyDaily(byDay) {
@@ -2090,24 +2099,21 @@
       return;
     }
     const rows = days.map(day => {
-      const { before, after } = byDay[day];
-      const dayTotal = before.netPnl + after.netPnl;
-      const dayClosed = before.closed + after.closed;
+      const buckets = byDay[day];
+      const dayTotal = TOD_BUCKETS.reduce((sum, bk) => sum + buckets[bk.key].netPnl, 0);
+      const dayClosed = TOD_BUCKETS.reduce((sum, bk) => sum + buckets[bk.key].closed, 0);
       const totalClass = dayTotal > 0 ? 'pos' : dayTotal < 0 ? 'neg' : '';
-      const favSub = b => (b.favorable + b.unfavorable) ? `<span class="pos">F${b.favorable}</span>/<span class="neg">U${b.unfavorable}</span>` : '';
+      const cell = b => `<td class="${b.netPnl > 0 ? 'pos' : b.netPnl < 0 ? 'neg' : ''}">${b.closed ? pnlLabel(b.netPnl) : '—'}<div class="sub">${b.total} sig · ${winRateLabel(b)}</div></td>`;
       return `
       <tr>
         <td>${day}</td>
-        <td>${before.total}<div class="sub">${winRateLabel(before)} win${favSub(before) ? ' · ' + favSub(before) : ''}</div></td>
-        <td class="${before.netPnl > 0 ? 'pos' : before.netPnl < 0 ? 'neg' : ''}">${before.closed ? pnlLabel(before.netPnl) : '—'}</td>
-        <td>${after.total}<div class="sub">${winRateLabel(after)} win${favSub(after) ? ' · ' + favSub(after) : ''}</div></td>
-        <td class="${after.netPnl > 0 ? 'pos' : after.netPnl < 0 ? 'neg' : ''}">${after.closed ? pnlLabel(after.netPnl) : '—'}</td>
+        ${TOD_BUCKETS.map(bk => cell(buckets[bk.key])).join('')}
         <td class="total-cell ${totalClass}">${dayClosed ? pnlLabel(dayTotal) : '—'}</td>
       </tr>`;
     }).join('');
     table.innerHTML = `
       <thead><tr>
-        <th>Date</th><th>Before 11AM</th><th>P&amp;L</th><th>After 11AM</th><th>P&amp;L</th><th>Day Net P&amp;L</th>
+        <th>Date</th>${TOD_BUCKETS.map(b => `<th>${b.label}</th>`).join('')}<th>Day Net P&amp;L</th>
       </tr></thead>
       <tbody>${rows}</tbody>`;
   }
@@ -2479,42 +2485,36 @@
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Daily P&L Summary");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), "Signal Detail");
 
-    // Sheet 3: same full range, split before/after 11:00 AM IST per day --
-    // for studying which half of the day produces more accurate signals.
-    // Favorable/Unfavorable reflect LIVE prices at export time, so they're
-    // only meaningful for today's still-open signals -- older days are
-    // already fully closed and show blank there.
+    // Sheet 3: same full range, 5m/15m only, split into the 4 Time-of-Day
+    // windows + After 3PM per day (see TOD_BUCKETS) -- lines up with the
+    // daily 3 PM force-close, for studying which window produces more
+    // accurate signals. Favorable/Unfavorable reflect LIVE prices at
+    // export time, so they're only meaningful for today's still-open
+    // signals -- older days are already fully closed and show blank there.
     const exportMovers = await fetchMoversBySymbol();
-    // Buy/Sell Triggered signals are never counted in the accuracy study.
+    // Buy/Sell Triggered signals are never counted; computeAccuracy also
+    // scopes to 5m/15m only.
     const { overall, byDay } = computeAccuracy(rows.filter(countsTowardPnl), exportMovers);
+    const bucketFields = (prefix, b) => ({
+      [`${prefix} — Signals`]: b.total, [`${prefix} — Buy`]: b.buy, [`${prefix} — Sell`]: b.sell,
+      [`${prefix} — Closed`]: b.closed, [`${prefix} — Favorable (open)`]: b.favorable, [`${prefix} — Unfavorable (open)`]: b.unfavorable,
+      [`${prefix} — Win Rate %`]: b.closed ? Math.round((b.wins / b.closed) * 100) : "",
+      [`${prefix} — Net P&L (Rs)`]: b.closed ? Math.round(b.netPnl * 100) / 100 : "",
+    });
+    const dayNetPnl = buckets => TOD_BUCKETS.reduce((sum, bk) => sum + buckets[bk.key].netPnl, 0);
+    const dayClosedCount = buckets => TOD_BUCKETS.reduce((sum, bk) => sum + buckets[bk.key].closed, 0);
     const sessionRows = Object.keys(byDay).sort().map(day => {
-      const { before, after } = byDay[day];
-      return {
-        "Date": day,
-        "Before 11AM — Signals": before.total, "Before 11AM — Buy": before.buy, "Before 11AM — Sell": before.sell,
-        "Before 11AM — Closed": before.closed, "Before 11AM — Favorable (open)": before.favorable, "Before 11AM — Unfavorable (open)": before.unfavorable,
-        "Before 11AM — Win Rate %": before.closed ? Math.round((before.wins / before.closed) * 100) : "",
-        "Before 11AM — Net P&L (Rs)": before.closed ? Math.round(before.netPnl * 100) / 100 : "",
-        "After 11AM — Signals": after.total, "After 11AM — Buy": after.buy, "After 11AM — Sell": after.sell,
-        "After 11AM — Closed": after.closed, "After 11AM — Favorable (open)": after.favorable, "After 11AM — Unfavorable (open)": after.unfavorable,
-        "After 11AM — Win Rate %": after.closed ? Math.round((after.wins / after.closed) * 100) : "",
-        "After 11AM — Net P&L (Rs)": after.closed ? Math.round(after.netPnl * 100) / 100 : "",
-        "Day Net P&L (Rs)": (before.closed + after.closed) ? Math.round((before.netPnl + after.netPnl) * 100) / 100 : "",
-      };
+      const buckets = byDay[day];
+      let row = { "Date": day };
+      TOD_BUCKETS.forEach(b => { row = { ...row, ...bucketFields(b.label, buckets[b.key]) }; });
+      row["Day Net P&L (Rs)"] = dayClosedCount(buckets) ? Math.round(dayNetPnl(buckets) * 100) / 100 : "";
+      return row;
     });
-    sessionRows.push({
-      "Date": `TOTAL (${dateFrom} to ${dateTo})`,
-      "Before 11AM — Signals": overall.before.total, "Before 11AM — Buy": overall.before.buy, "Before 11AM — Sell": overall.before.sell,
-      "Before 11AM — Closed": overall.before.closed, "Before 11AM — Favorable (open)": overall.before.favorable, "Before 11AM — Unfavorable (open)": overall.before.unfavorable,
-      "Before 11AM — Win Rate %": overall.before.closed ? Math.round((overall.before.wins / overall.before.closed) * 100) : "",
-      "Before 11AM — Net P&L (Rs)": overall.before.closed ? Math.round(overall.before.netPnl * 100) / 100 : "",
-      "After 11AM — Signals": overall.after.total, "After 11AM — Buy": overall.after.buy, "After 11AM — Sell": overall.after.sell,
-      "After 11AM — Closed": overall.after.closed, "After 11AM — Favorable (open)": overall.after.favorable, "After 11AM — Unfavorable (open)": overall.after.unfavorable,
-      "After 11AM — Win Rate %": overall.after.closed ? Math.round((overall.after.wins / overall.after.closed) * 100) : "",
-      "After 11AM — Net P&L (Rs)": overall.after.closed ? Math.round(overall.after.netPnl * 100) / 100 : "",
-      "Day Net P&L (Rs)": (overall.before.closed + overall.after.closed) ? Math.round((overall.before.netPnl + overall.after.netPnl) * 100) / 100 : "",
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sessionRows), "Before vs After 11AM");
+    let totalRow = { "Date": `TOTAL (${dateFrom} to ${dateTo})` };
+    TOD_BUCKETS.forEach(b => { totalRow = { ...totalRow, ...bucketFields(b.label, overall[b.key]) }; });
+    totalRow["Day Net P&L (Rs)"] = dayClosedCount(overall) ? Math.round(dayNetPnl(overall) * 100) / 100 : "";
+    sessionRows.push(totalRow);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sessionRows), "Time of Day (5m-15m)");
 
     XLSX.writeFile(wb, `SignalDesk_PnL_${dateFrom}_to_${dateTo}.xlsx`);
   });
