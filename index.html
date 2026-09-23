@@ -412,6 +412,15 @@
 
   .feed-count { font-size: 11px; color: var(--text-dim); }
 
+  .tod-section { margin-bottom: 22px; }
+  .tod-section-header {
+    display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap;
+    gap: 6px 14px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .tod-section-stats { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--text-secondary); }
+  .tod-section-stats .pos { color: var(--green); }
+  .tod-section-stats .neg { color: var(--red); }
+
   .signal-list {
     display: flex;
     flex-direction: column;
@@ -540,7 +549,7 @@
     text-transform: uppercase; padding: 1px 5px; border-radius: 4px;
     background: rgba(61, 220, 151, 0.14); color: var(--green); border: 1px solid rgba(61, 220, 151, 0.35);
   }
-  .status-tag.eod_close { background: rgba(139, 150, 168, 0.12); color: var(--text-secondary); }
+  .status-tag.eod_close, .status-tag.session_close { background: rgba(139, 150, 168, 0.12); color: var(--text-secondary); }
   .sig-levels .tp.hit { opacity: 0.55; }
   .sig-levels .tp .tick { color: var(--green); }
 
@@ -1054,6 +1063,7 @@
       <div class="filter-group" id="mainTabFilter">
         <div class="chip active" data-tab="history">Signal History</div>
         <div class="chip" data-tab="direction">Live Direction</div>
+        <div class="chip" data-tab="timeofday">Time of Day (5m/15m)</div>
       </div>
       <div class="feed-count" id="feedCount"></div>
     </div>
@@ -1075,6 +1085,17 @@
       </div>
       <div id="directionTfBreakdown"></div>
       <div class="direction-lists" id="directionLists"></div>
+    </div>
+
+    <div id="timeOfDayTab" style="display:none;">
+      <div class="accuracy-note" style="margin-bottom:14px;">
+        5m/15m signals only, grouped by GENERATION time (IST) into 4 windows -- matching the daily 3 PM force-close
+        (a 5m/15m position that hasn't hit its stop or a target by then closes at whatever the LTP is). Uses the
+        FULL date range below, not just the 300 shown on screen. Buy/Sell Triggered signals are excluded.
+      </div>
+      <div id="timeOfDayContainer">
+        <div class="empty-state">Loading…</div>
+      </div>
     </div>
 
     <footer id="footerNote">Refreshes every 15s · Backend: <span id="apiBaseLabel"></span></footer>
@@ -1118,7 +1139,7 @@
       <div class="chart-legend" id="chartLegend"></div>
       <div id="chartContainer"></div>
       <div id="chartAdxWrap" style="display:none;">
-        <div class="chart-subpanel-title">ADX — trend strength (confirms Buy/Sell)</div>
+        <div class="chart-subpanel-title">ADX + DI — trend strength & direction (confirms Buy/Sell)</div>
         <div id="chartAdxContainer" class="chart-subcontainer"></div>
       </div>
       <div id="chartVwapVolWrap" style="display:none;">
@@ -1290,6 +1311,7 @@
     breakeven_stop_hit: "BREAKEVEN STOP",
     trail_stop_hit: "TRAIL STOP HIT",
     eod_close: "EOD CLOSE",
+    session_close: "3 PM CLOSE",  // 5m/15m only -- see backend outcome_tracker.py
     target_hit: "TARGET HIT",  // legacy rows from before the 3-target ladder
   };
 
@@ -1485,20 +1507,10 @@
     if (e.target.id === 'pnlModal') document.getElementById('pnlModal').classList.remove('show');
   });
 
-  function renderFeed() {
-    const filtered = filteredSignals();
-    filtered.sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
-
-    document.getElementById('feedCount').textContent = `${filtered.length} shown`;
-
-    const container = document.getElementById('feedContainer');
-
-    if (filtered.length === 0) {
-      container.innerHTML = `<div class="empty-state">No signals match these filters yet.</div>`;
-      return;
-    }
-
-    container.innerHTML = `<div class="signal-list">` + filtered.map(s => {
+  // Single signal card, shared by the Signal History tab and the Time of
+  // Day (5m/15m) tab -- both show the exact same "signal generated and its
+  // result" row, just grouped differently.
+  function renderSignalRow(s) {
       const tier = Number(s.tier || 0);
       const pnlKnown = s.pnl_amount !== null && s.pnl_amount !== undefined;
       const realized = Number(s.realized_pnl_amount || 0);
@@ -1575,7 +1587,22 @@
         </div>` : ''}
       </div>
     `;
-    }).join('') + `</div>`;
+  }
+
+  function renderFeed() {
+    const filtered = filteredSignals();
+    filtered.sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
+
+    document.getElementById('feedCount').textContent = `${filtered.length} shown`;
+
+    const container = document.getElementById('feedContainer');
+
+    if (filtered.length === 0) {
+      container.innerHTML = `<div class="empty-state">No signals match these filters yet.</div>`;
+      return;
+    }
+
+    container.innerHTML = `<div class="signal-list">` + filtered.map(renderSignalRow).join('') + `</div>`;
   }
 
   // ---- Live chart modal: candlesticks + EMA fast/slow, straight from our
@@ -1587,7 +1614,7 @@
   // + ADX (that's what promoted it from Triggered). Strong Buy/Strong Sell:
   // + ADX + VWAP + Volume + RSI (everything classify_strength checked). ----
   let chart, candleSeries, emaFastSeries, emaSlowSeries, vwapSeries, chartResizeObserver;
-  let adxChart, adxSeries, adxThresholdLine, adxResizeObserver;
+  let adxChart, adxSeries, adxThresholdLine, plusDiSeries, minusDiSeries, adxResizeObserver;
   let volumeChart, volumeSeries, volumeAvgSeries, volumeResizeObserver;
   let rsiChart, rsiSeries, rsiResizeObserver;
   let chartSymbol = null;
@@ -1656,6 +1683,10 @@
     const { subChart } = ensureSubChart('chartAdxContainer');
     adxChart = subChart;
     adxSeries = adxChart.addLineSeries({ color: '#E8B34F', lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+    // +DI/-DI: which direction is actually driving the trend -- part of the
+    // same Buy/Sell gate as ADX itself now (see backend classify_adx).
+    plusDiSeries = adxChart.addLineSeries({ color: '#3DDC97', lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
+    minusDiSeries = adxChart.addLineSeries({ color: '#FF6B5C', lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
   }
 
   function ensureVolumeChart() {
@@ -1712,6 +1743,8 @@
       if (chartTier === 'confirmed' || chartTier === 'strong') {
         ensureAdxChart();
         adxSeries.setData(data.adx || []);
+        plusDiSeries.setData(data.plus_di || []);
+        minusDiSeries.setData(data.minus_di || []);
         if (data.adx_threshold != null) {
           if (adxThresholdLine) {
             adxThresholdLine.applyOptions({ price: data.adx_threshold });
@@ -1739,7 +1772,11 @@
         `<span><b style="color:var(--amber)">●</b> EMA ${data.ema_fast_period}</span>`,
         `<span><b style="color:#5B8DEF">●</b> EMA ${data.ema_slow_period}</span>`,
       ];
-      if (chartTier === 'confirmed' || chartTier === 'strong') legendParts.push(`<span><b style="color:#E8B34F">●</b> ADX ${data.adx_period}</span>`);
+      if (chartTier === 'confirmed' || chartTier === 'strong') {
+        legendParts.push(`<span><b style="color:#E8B34F">●</b> ADX ${data.adx_period}</span>`);
+        legendParts.push(`<span><b style="color:#3DDC97">●</b> +DI</span>`);
+        legendParts.push(`<span><b style="color:#FF6B5C">●</b> -DI</span>`);
+      }
       if (chartTier === 'strong') {
         legendParts.push(`<span><b style="color:#B47EF5">●</b> VWAP</span>`);
         legendParts.push(`<span><b style="color:#5B8DEF">●</b> Volume</span>`);
@@ -1749,8 +1786,8 @@
       legend.innerHTML = legendParts.join('');
 
       const tierLabel = chartTier === 'strong' ? 'Strong Buy/Sell — full confirmation set'
-        : chartTier === 'confirmed' ? 'Buy/Sell — ADX-confirmed'
-        : 'Buy/Sell Triggered — EMA only, ADX not yet confirmed';
+        : chartTier === 'confirmed' ? 'Buy/Sell — ADX+DI confirmed'
+        : 'Buy/Sell Triggered — EMA only, ADX+DI not yet confirmed';
       document.getElementById('chartSub').textContent =
         `${data.name || ''} · ${chartTf.toUpperCase()} · ${tierLabel}`;
     } catch (e) {
@@ -1916,8 +1953,14 @@
     renderFeed();
   });
 
-  document.getElementById('dateFrom').addEventListener('change', () => fetchSignals());
-  document.getElementById('dateTo').addEventListener('change', () => fetchSignals());
+  document.getElementById('dateFrom').addEventListener('change', () => {
+    fetchSignals();
+    if (activeMainTab === 'timeofday') loadTimeOfDay();
+  });
+  document.getElementById('dateTo').addEventListener('change', () => {
+    fetchSignals();
+    if (activeMainTab === 'timeofday') loadTimeOfDay();
+  });
 
   // ---- Excel export: full date-range daily P&L, independent of the ----
   // ---- 300-row cap on the on-screen feed. Pages through /history in ----
@@ -2096,6 +2139,80 @@
     if (e.target.id === 'accuracyModal') document.getElementById('accuracyModal').classList.remove('show');
   });
 
+  // ---- Time of Day (5m/15m only): every signal, individually, grouped   ----
+  // ---- by GENERATION time into the 4 windows that line up with the      ----
+  // ---- daily 3 PM force-close -- "signal generated and its result",     ----
+  // ---- not just aggregate stats (that's what the Accuracy modal above   ----
+  // ---- is for). A 5th "After 3 PM" bucket catches the handful of        ----
+  // ---- signals that can still fire between the 3 PM cutoff and the      ----
+  // ---- 3:30 PM market close, so nothing silently goes missing.          ----
+  const TOD_BUCKETS = [
+    { key: 'before10', label: 'Before 10:00 AM', test: h => h < 10 },
+    { key: '10to1', label: '10:00 AM – 1:00 PM', test: h => h >= 10 && h < 13 },
+    { key: '1to2', label: '1:00 PM – 2:00 PM', test: h => h >= 13 && h < 14 },
+    { key: '2to3', label: '2:00 PM – 3:00 PM', test: h => h >= 14 && h < 15 },
+    { key: 'after3', label: 'After 3:00 PM', test: h => h >= 15 },
+  ];
+
+  function todBucketOf(iso) {
+    const h = istHourOf(iso);
+    return (TOD_BUCKETS.find(b => b.test(h)) || TOD_BUCKETS[TOD_BUCKETS.length - 1]).key;
+  }
+
+  function renderTimeOfDay(rows, moversBySymbol) {
+    const container = document.getElementById('timeOfDayContainer');
+    if (rows.length === 0) {
+      container.innerHTML = `<div class="empty-state">No 5m/15m signals in this range.</div>`;
+      return;
+    }
+    const byBucket = {};
+    TOD_BUCKETS.forEach(b => { byBucket[b.key] = []; });
+    rows.forEach(s => { if (s.generated_at) byBucket[todBucketOf(s.generated_at)].push(s); });
+
+    container.innerHTML = TOD_BUCKETS.filter(b => byBucket[b.key].length > 0).map(b => {
+      const list = byBucket[b.key].slice().sort((a, c) => new Date(c.generated_at) - new Date(a.generated_at));
+      const bucket = emptyPeriodBucket();
+      list.forEach(s => {
+        const isClosed = s.status === 'closed' && s.pnl_amount != null;
+        addToBucket(bucket, s, isClosed ? Number(s.pnl_amount) : 0, isClosed, moversBySymbol);
+      });
+      const pnlClass = bucket.netPnl > 0 ? 'pos' : bucket.netPnl < 0 ? 'neg' : '';
+      return `
+      <div class="tod-section">
+        <div class="tod-section-header">
+          <div class="feed-title">${b.label} <span class="feed-count">(${bucket.total} signals)</span></div>
+          <div class="tod-section-stats">
+            <span>${bucket.buy} buy · ${bucket.sell} sell</span>
+            <span>${bucket.closed} closed · ${bucket.open} open</span>
+            <span>Win rate ${winRateLabel(bucket)}</span>
+            <span class="${pnlClass}">Net P&amp;L ${bucket.closed ? pnlLabel(bucket.netPnl) : '—'}</span>
+          </div>
+        </div>
+        <div class="signal-list">${list.map(renderSignalRow).join('')}</div>
+      </div>`;
+    }).join('');
+  }
+
+  async function loadTimeOfDay() {
+    const container = document.getElementById('timeOfDayContainer');
+    container.innerHTML = `<div class="empty-state">Loading full range…</div>`;
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    try {
+      const [rows, moversBySymbol] = await Promise.all([fetchFullRange(dateFrom, dateTo), fetchMoversBySymbol()]);
+      const filtered = rows.filter(s => (s.timeframe === '5m' || s.timeframe === '15m') && countsTowardPnl(s));
+      renderTimeOfDay(filtered, moversBySymbol);
+    } catch (e) {
+      container.innerHTML = `<div class="error-state">Couldn't load signal history. Check that the backend is reachable.</div>`;
+    }
+  }
+
+  document.getElementById('timeOfDayContainer').addEventListener('click', e => {
+    const target = e.target.closest('.sig-symbol');
+    if (!target) return;
+    openChart(target.dataset.symbol, target.dataset.tf, target.dataset.tier);
+  });
+
   // ---- Live signal direction: every OPEN signal right now, compared to  ----
   // ---- its live price -- how many stocks have moved the way the signal  ----
   // ---- needs (in favor) vs the opposite (against), with the full list.  ----
@@ -2220,12 +2337,15 @@
     document.querySelectorAll('#mainTabFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.tab === tab));
     document.getElementById('feedContainer').style.display = tab === 'history' ? '' : 'none';
     document.getElementById('directionTab').style.display = tab === 'direction' ? '' : 'none';
+    document.getElementById('timeOfDayTab').style.display = tab === 'timeofday' ? '' : 'none';
     document.getElementById('feedCount').style.display = tab === 'history' ? '' : 'none';
     if (tab === 'direction') {
       document.getElementById('directionSummary').innerHTML = `<div class="accuracy-empty">Loading…</div>`;
       document.getElementById('directionTfBreakdown').innerHTML = '';
       document.getElementById('directionLists').innerHTML = '';
       loadDirection();
+    } else if (tab === 'timeofday') {
+      loadTimeOfDay();
     }
   }
 
