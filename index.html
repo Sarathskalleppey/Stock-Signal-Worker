@@ -1073,9 +1073,9 @@
         <div class="chip" data-status="closed">Closed</div>
       </div>
       <div class="filter-group" id="strictFilter">
-        <div class="chip active" data-strict="off">Strict off</div>
-        <div class="chip" data-strict="very_strong" title="5m/15m only: score 7-8 of 8 on EMA50 trend, higher-timeframe trend, VWAP, ADX rising, DI direction, ATR expansion, EMA9/26 gap widening -- plus generated within 09:30-14:45 IST">🔥 Very Strong</div>
-        <div class="chip" data-strict="fair" title="5m/15m only: score 5-6 of 8 on the same 8 conditions -- plus generated within 09:30-14:45 IST">✓ Fair</div>
+        <div class="chip" id="strictModeToggle" title="5m/15m only: scores 8 trend/anti-consolidation conditions, plus a 09:30-14:45 IST time gate">Strict Mode</div>
+        <div class="chip strict-tier-chip" data-strict="very_strong" style="display:none;" title="Score 7-8 of 8: EMA50 trend, higher-timeframe trend, VWAP, ADX rising, DI direction, ATR expansion, EMA9/26 gap widening">🔥 Very Strong</div>
+        <div class="chip strict-tier-chip" data-strict="fair" style="display:none;" title="Score 5-6 of 8 on the same 8 conditions">✓ Fair</div>
       </div>
       <input type="date" class="date-input" id="dateFrom" title="From date">
       <input type="date" class="date-input" id="dateTo" title="To date (leave blank for today)">
@@ -1975,13 +1975,30 @@
     renderFeed();
   });
 
-  document.getElementById('strictFilter').addEventListener('click', e => {
-    const chip = e.target.closest('.chip');
-    if (!chip) return;
-    document.querySelectorAll('#strictFilter .chip').forEach(c => c.classList.remove('active'));
-    chip.classList.add('active');
-    strictTier = chip.dataset.strict;
+  // "Strict Mode" is a parent toggle: turning it on reveals the Very
+  // Strong / Fair tier chips (defaulting to Very Strong); turning it off
+  // hides them again and clears the filter entirely.
+  document.getElementById('strictModeToggle').addEventListener('click', () => {
+    const modeOn = !document.getElementById('strictModeToggle').classList.contains('active');
+    document.getElementById('strictModeToggle').classList.toggle('active', modeOn);
+    document.querySelectorAll('.strict-tier-chip').forEach(c => c.style.display = modeOn ? '' : 'none');
+    if (modeOn) {
+      document.querySelectorAll('.strict-tier-chip').forEach(c => c.classList.toggle('active', c.dataset.strict === 'very_strong'));
+      strictTier = 'very_strong';
+    } else {
+      document.querySelectorAll('.strict-tier-chip').forEach(c => c.classList.remove('active'));
+      strictTier = 'off';
+    }
     renderFeed();
+  });
+
+  document.querySelectorAll('.strict-tier-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.strict-tier-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      strictTier = chip.dataset.strict;
+      renderFeed();
+    });
   });
 
   document.getElementById('tfFilter').addEventListener('click', e => {
