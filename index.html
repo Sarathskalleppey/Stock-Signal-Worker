@@ -1358,9 +1358,11 @@
       <div class="accuracy-note">
         Each row is an INDEPENDENT slice (a signal can count in more than one -- e.g. a Strong signal can also
         score Very Strong on Strict Mode) -- this compares tiers side by side, not a single partition. Favorable =
-        closed with positive P&amp;L, unfavorable = closed at a loss or breakeven. Buy/Sell Triggered signals (ADX
-        hasn't confirmed a real trend) are excluded throughout. Uses the FULL date range below, not just the 300
-        shown on screen. Range: <span id="categoryPerfRange">—</span>
+        closed with positive P&amp;L, unfavorable = closed at a loss or breakeven. Return on Capital = net P&amp;L
+        &divide; total capital deployed across every CLOSED signal in that row (each signal notionally sizes at
+        Rs 1L per trade). Buy/Sell Triggered signals (ADX hasn't confirmed a real trend) are excluded
+        throughout. Uses the FULL date range below, not just the 300 shown on screen.
+        Range: <span id="categoryPerfRange">—</span>
       </div>
       <div class="accuracy-daily-wrap">
         <table class="accuracy-daily" id="categoryPerfTable"></table>
@@ -2542,15 +2544,26 @@
     const confirmed = rows.filter(countsTowardPnl);
     return CATEGORY_DEFS.map(def => {
       const bucket = emptyPeriodBucket();
+      let capitalDeployed = 0; // sum of investment_amount across CLOSED signals in this category
       confirmed.filter(def.match).forEach(s => {
         const isClosed = s.status === 'closed' && s.pnl_amount != null;
         const pnl = isClosed ? Number(s.pnl_amount) : 0;
         addToBucket(bucket, s, pnl, isClosed, {});
+        if (isClosed) capitalDeployed += Number(s.investment_amount) || 100000;
       });
       bucket.favorable = bucket.wins;
       bucket.unfavorable = bucket.closed - bucket.wins;
+      bucket.capitalDeployed = capitalDeployed;
+      bucket.roiPercent = capitalDeployed ? (bucket.netPnl / capitalDeployed) * 100 : null;
       return { key: def.key, label: def.label, ...bucket };
     });
+  }
+
+  // Return on capital = net P&L / total capital deployed across every
+  // CLOSED signal in the category (each signal notionally sizes at
+  // investment_amount, default Rs 1L -- see signal_outcomes.investment_amount).
+  function roiLabel(c) {
+    return c.roiPercent == null ? '—' : `${c.roiPercent >= 0 ? '+' : ''}${c.roiPercent.toFixed(2)}%`;
   }
 
   function renderCategoryPerformance(cats) {
@@ -2558,6 +2571,7 @@
     const rows = cats.map(c => {
       const ratioClass = c.favorable > c.unfavorable ? 'pos' : c.unfavorable > c.favorable ? 'neg' : '';
       const pnlClass = c.netPnl > 0 ? 'pos' : c.netPnl < 0 ? 'neg' : '';
+      const roiClass = c.roiPercent > 0 ? 'pos' : c.roiPercent < 0 ? 'neg' : '';
       return `
       <tr>
         <td>${c.label}<br><span style="color:var(--text-dim); font-size:10px;">${c.buy} Buy / ${c.sell} Sell</span></td>
@@ -2567,11 +2581,12 @@
         <td class="neg">${c.unfavorable}</td>
         <td class="${ratioClass}">${ratioLabel(c)}</td>
         <td class="${pnlClass}">${c.closed ? pnlLabel(c.netPnl) : '—'}</td>
+        <td class="${roiClass}">${roiLabel(c)}</td>
       </tr>`;
     }).join('');
     table.innerHTML = `
       <thead><tr>
-        <th>Category</th><th>Total</th><th>Closed</th><th>Favorable</th><th>Unfavorable</th><th>Ratio (F:U)</th><th>Net P&amp;L</th>
+        <th>Category</th><th>Total</th><th>Closed</th><th>Favorable</th><th>Unfavorable</th><th>Ratio (F:U)</th><th>Net P&amp;L</th><th>Return on Capital</th>
       </tr></thead>
       <tbody>${rows}</tbody>`;
   }
