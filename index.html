@@ -555,6 +555,47 @@
     background: rgba(232, 179, 79, 0.14); color: var(--amber); border-color: rgba(232, 179, 79, 0.35);
   }
   .status-tag.eod_close, .status-tag.session_close { background: rgba(139, 150, 168, 0.12); color: var(--text-secondary); }
+
+  /* Trading Mode panel + Real Orders (see app/execution/) -- trading_mode
+     is a live DB kill switch, checked fresh on every real order attempt.
+     Mode-button colors: stopped=red (safe default), semi_auto=amber
+     (needs approval), full_auto=green (fires immediately). */
+  .trading-mode-value { font-size: 22px; font-weight: 700; letter-spacing: 0.02em; margin: 4px 0 2px; }
+  .trading-mode-value.stopped { color: var(--red); }
+  .trading-mode-value.semi_auto { color: var(--amber); }
+  .trading-mode-value.full_auto { color: var(--green); }
+  .trading-mode-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+  .mode-btn {
+    flex: 1 1 auto; background: var(--bg-panel); border: 1px solid var(--border); color: var(--text-secondary);
+    font-family: var(--font-mono); font-size: 12px; padding: 10px 14px; border-radius: 8px; cursor: pointer;
+    transition: all 0.15s ease; text-align: center;
+  }
+  .mode-btn:hover { border-color: var(--text-dim); color: var(--text-primary); }
+  .mode-btn.active[data-mode="stopped"] { background: rgba(255, 107, 92, 0.14); border-color: var(--red); color: var(--red); }
+  .mode-btn.active[data-mode="semi_auto"] { background: rgba(232, 179, 79, 0.14); border-color: var(--amber); color: var(--amber); }
+  .mode-btn.active[data-mode="full_auto"] { background: rgba(61, 220, 151, 0.14); border-color: var(--green); color: var(--green); }
+  .dry-run-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin: 8px 0; }
+  .dry-run-note { font-size: 11px; color: var(--text-dim); }
+  .real-order-card {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  }
+  .real-order-main { display: flex; flex-direction: column; gap: 3px; }
+  .real-order-symbol { font-weight: 700; font-size: 13px; }
+  .real-order-meta { font-size: 11px; color: var(--text-dim); }
+  .order-status-tag { display: inline-block; font-size: 9px; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; }
+  .order-status-tag.placed, .order-status-tag.filled { background: rgba(61, 220, 151, 0.14); color: var(--green); }
+  .order-status-tag.rejected, .order-status-tag.cancelled { background: rgba(255, 107, 92, 0.14); color: var(--red); }
+  .order-status-tag.awaiting_approval { background: rgba(232, 179, 79, 0.14); color: var(--amber); }
+  .order-status-tag.closed, .order-status-tag.pending { background: rgba(139, 150, 168, 0.14); color: var(--text-secondary); }
+  .order-status-tag.dry-run-tag { background: rgba(139, 150, 168, 0.14); color: var(--text-dim); margin-left: 5px; }
+  .real-order-actions { display: flex; gap: 8px; }
+  .real-order-actions button {
+    font-family: var(--font-mono); font-size: 11px; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--bg-panel);
+  }
+  .real-order-actions .approve-btn { color: var(--green); border-color: var(--green); }
+  .real-order-actions .reject-btn { color: var(--red); border-color: var(--red); }
   .sig-levels .tp.hit { opacity: 0.55; }
   .sig-levels .tp .tick { color: var(--green); }
 
@@ -1011,6 +1052,10 @@
         <div class="stat-label">📊 Daily Favorable/Unfavorable</div>
         <div class="stat-value" style="font-size:14px;">History by date</div>
       </button>
+      <button class="stat-card stat-card-btn" id="tradingModeTrigger">
+        <div class="stat-label">⚡ Trading Mode</div>
+        <div class="stat-value" id="tradingModeSummary" style="font-size:14px;">—</div>
+      </button>
       <div class="tf-box">
         <div class="filter-group" id="tfFilter">
           <div class="chip active" data-tf="ALL">All timeframes</div>
@@ -1087,6 +1132,7 @@
         <div class="chip active" data-tab="history">Signal History</div>
         <div class="chip" data-tab="direction">Live Direction</div>
         <div class="chip" data-tab="timeofday">Time of Day (5m/15m)</div>
+        <div class="chip" data-tab="realorders">Real Orders</div>
       </div>
       <div class="feed-count" id="feedCount"></div>
     </div>
@@ -1117,6 +1163,17 @@
         FULL date range below, not just the 300 shown on screen. Buy/Sell Triggered signals are excluded.
       </div>
       <div id="timeOfDayContainer">
+        <div class="empty-state">Loading…</div>
+      </div>
+    </div>
+
+    <div id="realOrdersTab" style="display:none;">
+      <div class="accuracy-note" style="margin-bottom:14px;">
+        Every real order attempt via Alice Blue -- placed, rejected (with a reason), cancelled, or awaiting
+        semi-auto approval. A "DRY RUN" tag means it was logged but never sent to the broker. Controlled by the
+        ⚡ Trading Mode panel (top left) -- 'stopped' means nothing here ever gets written.
+      </div>
+      <div id="realOrdersContainer">
         <div class="empty-state">Loading…</div>
       </div>
     </div>
@@ -1236,6 +1293,40 @@
       </div>
       <div class="accuracy-daily-wrap">
         <table class="accuracy-daily" id="dailyFavTable"></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="tradingModeModal">
+    <div class="movers-box accuracy-box" style="max-width:480px;">
+      <div class="movers-header">
+        <div class="movers-title">⚡ Trading Mode (Alice Blue)</div>
+        <button class="movers-close" id="closeTradingMode">✕</button>
+      </div>
+      <div class="accuracy-note">
+        The kill switch for real order placement -- checked fresh on every signal, changes take effect immediately,
+        no redeploy needed. <b>Stopped</b> = nothing real ever happens. <b>Semi-Auto</b> = orders wait here for your
+        approval before they're sent. <b>Full-Auto</b> = orders are sent the instant a signal clears the filters.
+      </div>
+      <div style="text-align:center;">
+        <div class="stat-label">Current mode</div>
+        <div class="trading-mode-value" id="tradingModeCurrentValue">—</div>
+      </div>
+      <div class="trading-mode-buttons">
+        <button class="mode-btn" data-mode="stopped">⏹ Stop</button>
+        <button class="mode-btn" data-mode="semi_auto">✋ Semi-Auto</button>
+        <button class="mode-btn" data-mode="full_auto">▶ Full-Auto</button>
+      </div>
+      <div class="dry-run-row">
+        <div>
+          <div class="stat-label" style="margin-bottom:2px;">Dry run</div>
+          <div class="dry-run-note">Logs every order without ever calling the broker</div>
+        </div>
+        <div class="chip" id="dryRunToggle">—</div>
+      </div>
+      <div style="text-align:center; margin-top:6px;">
+        <div class="stat-label">Today's real P&amp;L</div>
+        <div class="stat-value" id="tradingModePnl" style="font-size:18px;">—</div>
       </div>
     </div>
   </div>
@@ -2303,6 +2394,160 @@
     if (e.target.id === 'dailyFavModal') document.getElementById('dailyFavModal').classList.remove('show');
   });
 
+  // ---- Trading Mode (Alice Blue real order execution) -- live DB kill    ----
+  // switch, see app/execution/. 'stopped' (default) never writes a real
+  // order; 'semi_auto' queues real_orders rows for approval below;
+  // 'full_auto' places them immediately. dry_run (default true) logs
+  // every order without ever calling the broker, in any mode.
+  let currentTradingMode = { mode: 'stopped', dry_run: true };
+
+  function tradingModeLabel(mode) {
+    return { stopped: 'Stopped', semi_auto: 'Semi-Auto', full_auto: 'Full-Auto' }[mode] || mode;
+  }
+
+  async function loadTradingModeSummary() {
+    try {
+      const res = await fetch(`${API_BASE}/trading-mode`);
+      if (!res.ok) throw new Error('not available');
+      const data = await res.json();
+      currentTradingMode = data;
+      const summaryEl = document.getElementById('tradingModeSummary');
+      if (summaryEl) summaryEl.textContent = `${tradingModeLabel(data.mode)}${data.dry_run ? ' · Dry Run' : ''}`;
+    } catch (e) {
+      const summaryEl = document.getElementById('tradingModeSummary');
+      if (summaryEl) summaryEl.textContent = 'Not available';
+    }
+  }
+
+  async function loadTradingMode() {
+    document.getElementById('tradingModeCurrentValue').textContent = 'Loading…';
+    document.getElementById('tradingModeCurrentValue').className = 'trading-mode-value';
+    try {
+      const res = await fetch(`${API_BASE}/trading-mode`);
+      if (!res.ok) throw new Error('not available');
+      const data = await res.json();
+      currentTradingMode = data;
+      renderTradingMode(data);
+    } catch (e) {
+      document.getElementById('tradingModeCurrentValue').textContent = 'Backend not updated yet';
+    }
+  }
+
+  function renderTradingMode(data) {
+    const valEl = document.getElementById('tradingModeCurrentValue');
+    valEl.textContent = tradingModeLabel(data.mode);
+    valEl.className = `trading-mode-value ${data.mode}`;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === data.mode));
+    const dryRunEl = document.getElementById('dryRunToggle');
+    dryRunEl.textContent = data.dry_run ? 'ON (safe)' : 'OFF (live money)';
+    dryRunEl.classList.toggle('active', data.dry_run);
+    document.getElementById('tradingModePnl').textContent =
+      data.today_realized_pnl != null ? pnlLabel(data.today_realized_pnl) : '—';
+    document.getElementById('tradingModeSummary').textContent =
+      `${tradingModeLabel(data.mode)}${data.dry_run ? ' · Dry Run' : ''}`;
+  }
+
+  async function setTradingMode(mode, dryRun) {
+    // Flipping OFF dry_run under full_auto is the one action that makes
+    // this send real money -- confirm explicitly rather than a silent click.
+    if (!dryRun && mode === 'full_auto') {
+      if (!confirm('This sends REAL orders with REAL money on every qualifying signal. Continue?')) return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/trading-mode`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, dry_run: dryRun }),
+      });
+      const data = await res.json();
+      currentTradingMode = data;
+      renderTradingMode(data);
+    } catch (e) {
+      alert("Couldn't update trading mode. Check the backend is reachable and try again.");
+    }
+  }
+
+  document.getElementById('tradingModeTrigger').addEventListener('click', () => {
+    document.getElementById('tradingModeModal').classList.add('show');
+    loadTradingMode();
+  });
+  document.getElementById('closeTradingMode').addEventListener('click', () =>
+    document.getElementById('tradingModeModal').classList.remove('show'));
+  document.getElementById('tradingModeModal').addEventListener('click', e => {
+    if (e.target.id === 'tradingModeModal') document.getElementById('tradingModeModal').classList.remove('show');
+  });
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => setTradingMode(btn.dataset.mode, currentTradingMode.dry_run));
+  });
+  document.getElementById('dryRunToggle').addEventListener('click', () => {
+    setTradingMode(currentTradingMode.mode, !currentTradingMode.dry_run);
+  });
+
+  // ---- Real Orders tab -- every real order attempt, with Approve/Reject   ----
+  // for rows awaiting semi-auto approval.
+  function realOrderCard(o) {
+    const canApprove = o.status === 'awaiting_approval';
+    const when = o.placed_at || o.created_at;
+    return `
+      <div class="real-order-card" data-id="${o.id}">
+        <div class="real-order-main">
+          <div class="real-order-symbol">
+            ${o.side} x${Number(o.quantity).toLocaleString('en-IN')}
+            <span class="order-status-tag ${o.status}">${o.status.replace('_', ' ')}</span>
+            ${o.dry_run ? '<span class="order-status-tag dry-run-tag">DRY RUN</span>' : ''}
+          </div>
+          <div class="real-order-meta">
+            ${when ? fmtExactTime(when) : ''}${o.requested_price ? ` · req ₹${Number(o.requested_price).toFixed(2)}` : ''}
+            ${o.broker_order_id ? ` · order ${o.broker_order_id}` : ''}
+            ${o.reason ? ` · ${o.reason}` : ''}
+          </div>
+        </div>
+        ${canApprove ? `
+          <div class="real-order-actions">
+            <button class="approve-btn" data-action="approve" data-id="${o.id}">Approve</button>
+            <button class="reject-btn" data-action="reject" data-id="${o.id}">Reject</button>
+          </div>` : ''}
+      </div>`;
+  }
+
+  function renderRealOrders(rows) {
+    const el = document.getElementById('realOrdersContainer');
+    if (!rows.length) {
+      el.innerHTML = `<div class="empty-state">No real orders yet.</div>`;
+      return;
+    }
+    el.innerHTML = rows.map(realOrderCard).join('');
+  }
+
+  async function loadRealOrders() {
+    const el = document.getElementById('realOrdersContainer');
+    el.innerHTML = `<div class="empty-state">Loading…</div>`;
+    try {
+      const res = await fetch(`${API_BASE}/real-orders?limit=200`);
+      if (!res.ok) throw new Error('not available');
+      const rows = await res.json();
+      renderRealOrders(rows);
+    } catch (e) {
+      el.innerHTML = `<div class="empty-state">Couldn't load real orders. Backend may not have this feature deployed yet.</div>`;
+    }
+  }
+
+  document.getElementById('realOrdersContainer').addEventListener('click', async e => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const { action, id } = btn.dataset;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/real-orders/${id}/${action}`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.detail || `Couldn't ${action} this order.`);
+      }
+    } catch (e) {
+      alert(`Couldn't ${action} this order. Check the backend is reachable.`);
+    }
+    loadRealOrders();
+  });
+
   // ---- Time of Day (5m/15m only): every signal, individually, grouped   ----
   // ---- by GENERATION time into the 4 windows that line up with the      ----
   // ---- daily 3 PM force-close -- "signal generated and its result",     ----
@@ -2502,6 +2747,7 @@
     document.getElementById('feedContainer').style.display = tab === 'history' ? '' : 'none';
     document.getElementById('directionTab').style.display = tab === 'direction' ? '' : 'none';
     document.getElementById('timeOfDayTab').style.display = tab === 'timeofday' ? '' : 'none';
+    document.getElementById('realOrdersTab').style.display = tab === 'realorders' ? '' : 'none';
     document.getElementById('feedCount').style.display = tab === 'history' ? '' : 'none';
     if (tab === 'direction') {
       document.getElementById('directionSummary').innerHTML = `<div class="accuracy-empty">Loading…</div>`;
@@ -2510,6 +2756,8 @@
       loadDirection();
     } else if (tab === 'timeofday') {
       loadTimeOfDay();
+    } else if (tab === 'realorders') {
+      loadRealOrders();
     }
   }
 
@@ -2681,7 +2929,9 @@
   function refresh() {
     fetchHealth();
     fetchSignals();
+    loadTradingModeSummary();
     if (activeMainTab === 'direction') loadDirection();
+    if (activeMainTab === 'realorders') loadRealOrders();
   }
   refresh();
   setInterval(refresh, 15000);
