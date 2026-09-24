@@ -145,6 +145,40 @@
   }
 
   .status-pill-wrap { position: relative; }
+
+  /* System alert bell (see app/monitoring.py's once-a-day 11 AM IST check) --
+     same dropdown pattern as the theme menu above. */
+  .alert-bell-wrap { position: relative; }
+  .alert-bell-btn { position: relative; }
+  .alert-bell-badge {
+    position: absolute; top: -2px; right: -2px; min-width: 15px; height: 15px; padding: 0 3px;
+    background: var(--red); color: #fff; border-radius: 100px; font-size: 9px; font-weight: 700;
+    line-height: 15px; text-align: center; display: none;
+  }
+  .alert-bell-badge.show { display: block; }
+  .alert-dropdown {
+    display: none;
+    position: absolute; top: calc(100% + 8px); right: 0;
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px; width: 320px; max-height: 360px; overflow-y: auto; z-index: 50;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  .alert-dropdown.show { display: block; }
+  .alert-dropdown-header {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-dim); padding: 4px 6px 8px;
+  }
+  .alert-dropdown-header button {
+    background: none; border: none; color: var(--amber); font-family: var(--font-mono);
+    font-size: 10px; cursor: pointer; text-transform: none; letter-spacing: 0;
+  }
+  .alert-item { padding: 8px 6px; border-radius: 6px; font-size: 11.5px; line-height: 1.5; cursor: pointer; }
+  .alert-item:hover { background: var(--hover-tint); }
+  .alert-item.unread { border-left: 2px solid var(--amber); padding-left: 8px; }
+  .alert-item .alert-msg { color: var(--text-primary); }
+  .alert-item .alert-time { color: var(--text-dim); font-size: 10px; margin-top: 2px; }
+  .alert-empty { padding: 20px 6px; text-align: center; color: var(--text-dim); font-size: 11.5px; }
   .dot-btn {
     background: none; border: none; padding: 6px; margin: -6px;
     cursor: pointer; display: flex; align-items: center; border-radius: 50%;
@@ -1052,6 +1086,10 @@
         <div class="stat-label">📊 Daily Favorable/Unfavorable</div>
         <div class="stat-value" style="font-size:14px;">History by date</div>
       </button>
+      <button class="stat-card stat-card-btn" id="categoryPerfTrigger">
+        <div class="stat-label">📈 Category Performance</div>
+        <div class="stat-value" style="font-size:14px;">Normal / Strong / Strict</div>
+      </button>
       <button class="stat-card stat-card-btn" id="tradingModeTrigger">
         <div class="stat-label">⚡ Trading Mode</div>
         <div class="stat-value" id="tradingModeSummary" style="font-size:14px;">—</div>
@@ -1084,7 +1122,20 @@
       </div>
       <div class="header-right">
         <div class="built-by">Built by Sarath Sreekumar</div>
-        <div class="status-pill-wrap">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="alert-bell-wrap">
+            <button class="dot-btn alert-bell-btn" id="alertBellTrigger" title="System alerts">
+              🔔<span class="alert-bell-badge" id="alertBellBadge">0</span>
+            </button>
+            <div class="alert-dropdown" id="alertDropdown">
+              <div class="alert-dropdown-header">
+                <span>System Alerts</span>
+                <button id="markAllAlertsRead">Mark all read</button>
+              </div>
+              <div id="alertDropdownList"><div class="alert-empty">Loading…</div></div>
+            </div>
+          </div>
+          <div class="status-pill-wrap">
           <div class="status-pill" id="statusPill">
             <button class="dot-btn" id="themeMenuTrigger" title="Click to change theme">
               <div class="dot" id="statusDot"></div>
@@ -1099,6 +1150,7 @@
             <button class="theme-menu-item" data-theme="emerald"><span class="theme-swatch" style="--sw1:#071410;--sw2:#4ADE9E;--sw3:#D9A55C;"></span>Deep Emerald</button>
             <button class="theme-menu-item" data-theme="navy"><span class="theme-swatch" style="--sw1:#050B1A;--sw2:#D4AF37;--sw3:#34D399;"></span>Royal Navy</button>
             <button class="theme-menu-item" data-theme="white"><span class="theme-swatch" style="--sw1:#F5F6F8;--sw2:#0EA968;--sw3:#A6790C;"></span>White Classic</button>
+          </div>
           </div>
         </div>
       </div>
@@ -1297,6 +1349,25 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="categoryPerfModal">
+    <div class="movers-box accuracy-box">
+      <div class="movers-header">
+        <div class="movers-title">Category Performance</div>
+        <button class="movers-close" id="closeCategoryPerf">✕</button>
+      </div>
+      <div class="accuracy-note">
+        Each row is an INDEPENDENT slice (a signal can count in more than one -- e.g. a Strong signal can also
+        score Very Strong on Strict Mode) -- this compares tiers side by side, not a single partition. Favorable =
+        closed with positive P&amp;L, unfavorable = closed at a loss or breakeven. Buy/Sell Triggered signals (ADX
+        hasn't confirmed a real trend) are excluded throughout. Uses the FULL date range below, not just the 300
+        shown on screen. Range: <span id="categoryPerfRange">—</span>
+      </div>
+      <div class="accuracy-daily-wrap">
+        <table class="accuracy-daily" id="categoryPerfTable"></table>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="tradingModeModal">
     <div class="movers-box accuracy-box" style="max-width:480px;">
       <div class="movers-header">
@@ -1373,6 +1444,66 @@
     try { saved = localStorage.getItem('signalDeskTheme') || ''; } catch (e) {}
     applyTheme(saved);
   })();
+
+  // ---- System alerts bell (see app/monitoring.py's once-a-day 11 AM IST ----
+  // check) -- same show/hide dropdown pattern as the theme menu above.
+  const alertDropdown = document.getElementById('alertDropdown');
+  let latestAlerts = [];
+
+  function toggleAlertDropdown(show) {
+    alertDropdown.classList.toggle('show', show ?? !alertDropdown.classList.contains('show'));
+  }
+
+  function renderAlertBell() {
+    const unread = latestAlerts.filter(a => !a.read).length;
+    const badge = document.getElementById('alertBellBadge');
+    badge.textContent = unread > 9 ? '9+' : String(unread);
+    badge.classList.toggle('show', unread > 0);
+
+    const list = document.getElementById('alertDropdownList');
+    if (!latestAlerts.length) {
+      list.innerHTML = `<div class="alert-empty">No alerts.</div>`;
+      return;
+    }
+    list.innerHTML = latestAlerts.map(a => `
+      <div class="alert-item ${a.read ? '' : 'unread'}" data-id="${a.id}">
+        <div class="alert-msg">${a.message}</div>
+        <div class="alert-time">${fmtExactTime(a.created_at)}</div>
+      </div>`).join('');
+  }
+
+  async function loadAlerts() {
+    try {
+      const res = await fetch(`${API_BASE}/system-alerts?limit=20`);
+      if (!res.ok) throw new Error('not available');
+      latestAlerts = await res.json();
+      renderAlertBell();
+    } catch (e) { /* bell just stays at its last known state */ }
+  }
+
+  document.getElementById('alertBellTrigger').addEventListener('click', e => {
+    e.stopPropagation();
+    toggleAlertDropdown();
+  });
+  document.addEventListener('click', e => {
+    if (!alertDropdown.contains(e.target) && e.target.id !== 'alertBellTrigger') toggleAlertDropdown(false);
+  });
+  document.getElementById('alertDropdownList').addEventListener('click', async e => {
+    const item = e.target.closest('.alert-item');
+    if (!item || !item.classList.contains('unread')) return;
+    const id = item.dataset.id;
+    item.classList.remove('unread');
+    const alert = latestAlerts.find(a => a.id === id);
+    if (alert) alert.read = true;
+    renderAlertBell();
+    try { await fetch(`${API_BASE}/system-alerts/${id}/read`, { method: 'POST' }); } catch (e) {}
+  });
+  document.getElementById('markAllAlertsRead').addEventListener('click', async () => {
+    latestAlerts.forEach(a => a.read = true);
+    renderAlertBell();
+    try { await fetch(`${API_BASE}/system-alerts/read-all`, { method: 'POST' }); } catch (e) {}
+  });
+  loadAlerts();
 
   // ---- Mobile stats panel: the sidebar (Net P&L, Live Signal Direction,
   // timeframe filter, Export, Accuracy) slides in from the left instead of
@@ -2394,6 +2525,80 @@
     if (e.target.id === 'dailyFavModal') document.getElementById('dailyFavModal').classList.remove('show');
   });
 
+  // ---- Category Performance: Normal / Strong / Strict Very Strong / Fair ----
+  // -- independent slices (not a partition -- a signal can count in more
+  // than one row), so tiers can be compared side by side the same way the
+  // user compares them manually today. Reuses the same bucket helpers as
+  // the Accuracy study (emptyPeriodBucket/addToBucket) and the same ratio/
+  // pnl formatters as Daily Favorable.
+  const CATEGORY_DEFS = [
+    { key: 'normal', label: 'Normal (Buy / Sell)', match: s => s.strength !== 'strong' },
+    { key: 'strong', label: 'Strong (Buy / Sell)', match: s => s.strength === 'strong' },
+    { key: 'very_strong', label: 'Strict Mode: Very Strong', match: s => s.strict_tier === 'very_strong' },
+    { key: 'fair', label: 'Strict Mode: Fair', match: s => s.strict_tier === 'fair' },
+  ];
+
+  function computeCategoryPerformance(rows) {
+    const confirmed = rows.filter(countsTowardPnl);
+    return CATEGORY_DEFS.map(def => {
+      const bucket = emptyPeriodBucket();
+      confirmed.filter(def.match).forEach(s => {
+        const isClosed = s.status === 'closed' && s.pnl_amount != null;
+        const pnl = isClosed ? Number(s.pnl_amount) : 0;
+        addToBucket(bucket, s, pnl, isClosed, {});
+      });
+      bucket.favorable = bucket.wins;
+      bucket.unfavorable = bucket.closed - bucket.wins;
+      return { key: def.key, label: def.label, ...bucket };
+    });
+  }
+
+  function renderCategoryPerformance(cats) {
+    const table = document.getElementById('categoryPerfTable');
+    const rows = cats.map(c => {
+      const ratioClass = c.favorable > c.unfavorable ? 'pos' : c.unfavorable > c.favorable ? 'neg' : '';
+      const pnlClass = c.netPnl > 0 ? 'pos' : c.netPnl < 0 ? 'neg' : '';
+      return `
+      <tr>
+        <td>${c.label}<br><span style="color:var(--text-dim); font-size:10px;">${c.buy} Buy / ${c.sell} Sell</span></td>
+        <td>${c.total}</td>
+        <td>${c.closed}</td>
+        <td class="pos">${c.favorable}</td>
+        <td class="neg">${c.unfavorable}</td>
+        <td class="${ratioClass}">${ratioLabel(c)}</td>
+        <td class="${pnlClass}">${c.closed ? pnlLabel(c.netPnl) : '—'}</td>
+      </tr>`;
+    }).join('');
+    table.innerHTML = `
+      <thead><tr>
+        <th>Category</th><th>Total</th><th>Closed</th><th>Favorable</th><th>Unfavorable</th><th>Ratio (F:U)</th><th>Net P&amp;L</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>`;
+  }
+
+  async function openCategoryPerformance() {
+    document.getElementById('categoryPerfModal').classList.add('show');
+    document.getElementById('categoryPerfTable').innerHTML = '';
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    document.getElementById('categoryPerfRange').textContent =
+      dateFrom ? `${dateFrom} to ${dateTo || todayIST()}` : 'last 30 days (no "From" date set)';
+    try {
+      const rows = await fetchFullRange(dateFrom, dateTo);
+      renderCategoryPerformance(computeCategoryPerformance(rows));
+    } catch (e) {
+      document.getElementById('categoryPerfTable').innerHTML =
+        `<tbody><tr><td class="accuracy-empty" colspan="7">Couldn't load the full range. Check the backend is reachable.</td></tr></tbody>`;
+    }
+  }
+
+  document.getElementById('categoryPerfTrigger').addEventListener('click', openCategoryPerformance);
+  document.getElementById('closeCategoryPerf').addEventListener('click', () =>
+    document.getElementById('categoryPerfModal').classList.remove('show'));
+  document.getElementById('categoryPerfModal').addEventListener('click', e => {
+    if (e.target.id === 'categoryPerfModal') document.getElementById('categoryPerfModal').classList.remove('show');
+  });
+
   // ---- Trading Mode (Alice Blue real order execution) -- live DB kill    ----
   // switch, see app/execution/. 'stopped' (default) never writes a real
   // order; 'semi_auto' queues real_orders rows for approval below;
@@ -2935,6 +3140,7 @@
   }
   refresh();
   setInterval(refresh, 15000);
+  setInterval(loadAlerts, 60000);
 </script>
 </body>
 </html>
