@@ -512,14 +512,6 @@
   }
   .sig-badge.buy { background: rgba(61, 220, 151, 0.12); color: var(--green); }
   .sig-badge.sell { background: rgba(255, 107, 92, 0.12); color: var(--red); }
-  .sig-badge.strong-buy, .sig-badge.strong-sell {
-    width: auto;
-    padding: 4px 8px;
-    white-space: nowrap;
-    border: 1px solid;
-  }
-  .sig-badge.strong-buy { background: rgba(61, 220, 151, 0.18); color: var(--green); border-color: var(--green); }
-  .sig-badge.strong-sell { background: rgba(255, 107, 92, 0.18); color: var(--red); border-color: var(--red); }
   .sig-badge.buy-triggered, .sig-badge.sell-triggered {
     flex-direction: column;
     gap: 1px;
@@ -532,22 +524,8 @@
   }
   .sig-badge .tag-sub { font-size: 8px; opacity: 0.9; letter-spacing: 0.03em; }
 
-  .strong-row { border-left: 2px solid var(--amber); }
   .triggered-row { border-left: 2px solid var(--border); }
   .status-tag.not-counted { background: rgba(139, 150, 168, 0.16); color: var(--text-secondary); border: 1px solid var(--text-dim); }
-  .strong-detail {
-    grid-column: 1 / -1;
-    display: flex;
-    gap: 18px;
-    flex-wrap: wrap;
-    margin-top: 4px;
-    padding-top: 8px;
-    border-top: 1px dashed var(--border);
-    font-size: 10.5px;
-    color: var(--text-dim);
-  }
-  .strong-detail b { color: var(--text-primary); font-weight: 600; }
-  .strong-detail b.pos { color: var(--green); }
 
   .sig-symbol {
     font-weight: 600;
@@ -1006,7 +984,6 @@
     .sig-pnl .sig-sub { text-align: left; }
     .sig-tf { grid-area: tf; text-align: center; }
     .sig-time { grid-area: time; text-align: right; font-size: 10px; }
-    .strong-detail { grid-column: 1 / -1; }
   }
 
   /* Mobile: stats become an off-canvas side panel opened via the hamburger
@@ -1112,7 +1089,7 @@
       </button>
       <button class="stat-card stat-card-btn" id="categoryPerfTrigger">
         <div class="stat-label">📈 Category Performance</div>
-        <div class="stat-value" style="font-size:14px;">Normal / Strong / Strict</div>
+        <div class="stat-value" style="font-size:14px;">Normal / Strict Mode</div>
       </button>
       <button class="stat-card stat-card-btn" id="tradingModeTrigger">
         <div class="stat-label">⚡ Trading Mode</div>
@@ -1184,10 +1161,8 @@
     <div class="filters">
       <div class="filter-group" id="signalFilter">
         <div class="chip active" data-signal="ALL">All</div>
-        <div class="chip" data-signal="STRONG_BUY">🔥 Strong Buy</div>
         <div class="chip" data-signal="BUY">Buy</div>
         <div class="chip" data-signal="SELL">Sell</div>
-        <div class="chip" data-signal="STRONG_SELL">🔥 Strong Sell</div>
       </div>
       <div class="filter-group" id="statusFilter">
         <div class="chip active" data-status="ALL">All status</div>
@@ -1221,7 +1196,7 @@
 
     <div id="directionTab" style="display:none;">
       <div class="accuracy-note" style="margin-bottom:14px;">
-        Every currently OPEN Buy/Sell/Strong Buy/Strong Sell signal (Triggered signals excluded -- ADX hasn't
+        Every currently OPEN Buy/Sell signal (Triggered signals excluded -- ADX hasn't
         confirmed a real trend for those), compared to its live price right now -- from any day, since a signal
         only closes on its stop-loss or a target. "In favor" = price has moved the way the signal needs (up for
         BUY, down for SELL) since entry; "against" = the opposite. Click any stock to open its chart. As of:
@@ -1301,11 +1276,11 @@
         <div id="chartAdxContainer" class="chart-subcontainer"></div>
       </div>
       <div id="chartVwapVolWrap" style="display:none;">
-        <div class="chart-subpanel-title">Volume vs 20-bar average (confirms Strong)</div>
+        <div class="chart-subpanel-title">Volume vs 20-bar average</div>
         <div id="chartVolumeContainer" class="chart-subcontainer"></div>
       </div>
       <div id="chartRsiWrap" style="display:none;">
-        <div class="chart-subpanel-title">RSI — momentum (confirms Strong)</div>
+        <div class="chart-subpanel-title">RSI — momentum</div>
         <div id="chartRsiContainer" class="chart-subcontainer"></div>
       </div>
       <div class="chart-footer">
@@ -1382,14 +1357,15 @@
         <button class="movers-close" id="closeCategoryPerf">✕</button>
       </div>
       <div class="accuracy-note">
-        Each row is an INDEPENDENT slice (a signal can count in more than one -- e.g. a Strong signal can also
-        score Very Strong on Strict Mode) -- this compares tiers side by side, not a single partition. Includes
-        LIVE (still open) signals, not just closed ones: favorable/unfavorable and Net P&amp;L both fold in
-        provisional mark-to-market P&amp;L for anything still open (same live LTP-based calculation as the
-        sidebar's Net P&amp;L card) alongside realized P&amp;L for anything closed. Return on Capital = net P&amp;L
-        (closed + provisional) &divide; total capital deployed across every signal in that row, closed or open
-        (each signal notionally sizes at Rs 1L per trade). Buy/Sell Triggered signals (ADX hasn't confirmed a
-        real trend) are excluded throughout. Uses the FULL date range below, not just the 300 shown on screen.
+        Each row is an INDEPENDENT slice (a Strict-tiered signal is ALSO counted in Normal) -- this compares
+        tiers side by side, not a single partition. Normal shows Favourable/Unfavourable only; only Strict Mode
+        rows show the Rs 1L-notional Net P&amp;L/Return on Capital. Includes LIVE (still open) signals, not just
+        closed ones: favourable/unfavourable and Net P&amp;L both fold in provisional mark-to-market P&amp;L for
+        anything still open (same live LTP-based calculation as the sidebar's Net P&amp;L card) alongside realized
+        P&amp;L for anything closed. Return on Capital = net P&amp;L (closed + provisional) &divide; total capital
+        deployed across every signal in that row, closed or open (each signal notionally sizes at Rs 1L per
+        trade). Buy/Sell Triggered signals (ADX hasn't confirmed a real trend) are excluded throughout. Uses the
+        FULL date range below, not just the 300 shown on screen.
         Range: <span id="categoryPerfRange">—</span>
       </div>
       <div class="accuracy-daily-wrap">
@@ -1672,29 +1648,24 @@
   // including "All" -- not just hidden from their own filter chip (which no
   // longer exists). The backend still records every raw crossover
   // regardless (needed for cooldown/history); this is purely what's shown.
-  //   adx_status === 'favor' + strength 'strong' -> Strong Buy/Sell
-  //   adx_status === 'favor' + everything else    -> Buy/Sell (confirmed)
+  //   adx_status === 'favor' -> Buy/Sell (confirmed)
   function isAdxConfirmed(s) {
     return s.adx_status === 'favor';
   }
 
   function matchesSignalFilter(s, filter) {
-    const isStrong = s.strength === 'strong';
     const confirmed = isAdxConfirmed(s);
     if (!confirmed) return false;
     switch (filter) {
-      case 'STRONG_BUY': return s.signal_type === 'BUY' && isStrong;
-      case 'STRONG_SELL': return s.signal_type === 'SELL' && isStrong;
-      case 'BUY': return s.signal_type === 'BUY' && !isStrong;
-      case 'SELL': return s.signal_type === 'SELL' && !isStrong;
+      case 'BUY': return s.signal_type === 'BUY';
+      case 'SELL': return s.signal_type === 'SELL';
       default: return true;
     }
   }
 
   // P&L, Live Signal Direction, and the Accuracy view all only count
-  // ADX-confirmed signals (Buy/Sell/Strong Buy/Strong Sell) -- a Triggered
-  // signal never fired on a confirmed trend, so it's excluded everywhere
-  // performance is measured.
+  // ADX-confirmed signals (Buy/Sell) -- a Triggered signal never fired on
+  // a confirmed trend, so it's excluded everywhere performance is measured.
   function countsTowardPnl(s) {
     return isAdxConfirmed(s);
   }
@@ -1729,16 +1700,13 @@
   }
 
   function renderStats(moversBySymbol = {}) {
-    const strongBuy = allSignals.filter(s => matchesSignalFilter(s, 'STRONG_BUY')).length;
     const buy = allSignals.filter(s => matchesSignalFilter(s, 'BUY')).length;
     const sell = allSignals.filter(s => matchesSignalFilter(s, 'SELL')).length;
-    const strongSell = allSignals.filter(s => matchesSignalFilter(s, 'STRONG_SELL')).length;
     document.getElementById('statCount').textContent = allSignals.length;
-    document.getElementById('statBuySell').textContent =
-      `🔥${strongBuy} buy · ${buy} buy · ${sell} sell · 🔥${strongSell} sell`;
+    document.getElementById('statBuySell').textContent = `${buy} buy · ${sell} sell`;
 
     // Triggered signals (ADX hasn't confirmed a real trend) never count
-    // toward P&L -- only Buy/Sell/Strong Buy/Strong Sell do.
+    // toward P&L -- only confirmed Buy/Sell do.
     const counted = allSignals.filter(countsTowardPnl);
     const closed = counted.filter(s => s.status === "closed" && s.pnl_amount != null);
     const closedPnl = closed.reduce((sum, s) => sum + Number(s.pnl_amount), 0);
@@ -1825,6 +1793,14 @@
       const statusTag = STATUS_LABELS[s.status === "open" ? "open" : s.exit_reason] || s.status;
       const statusClass = s.status === "open" ? "open" : (s.exit_reason || "");
 
+      // Normal (non-Strict Mode) signals show Favourable/Unfavourable only
+      // -- no Rs 1L notional P&L, since that figure is only meaningful for
+      // the actual-cost-aware Strict Mode P&L (see the Category Performance
+      // note and the strict-tier-only ₹ display below).
+      const isStrictTier = !!s.strict_tier;
+      const favUnfavClass = showAmount == null ? "" : (showAmount >= 0 ? "pos" : "neg");
+      const favUnfavLabel = showAmount == null ? "—" : (showAmount >= 0 ? "Favourable" : "Unfavourable");
+
       // SL label reflects the ratcheted stop: breakeven after target_1,
       // trailed to target_1's price after target_2.
       const activeStop = s.active_stop_loss != null ? Number(s.active_stop_loss) : (s.stop_loss != null ? Number(s.stop_loss) : null);
@@ -1836,18 +1812,17 @@
       };
 
       const confirmed = isAdxConfirmed(s);
-      const isStrong = s.strength === 'strong' && confirmed;
       const isTriggered = !confirmed;
       const badgeClass = s.signal_type === 'BUY'
-        ? (isStrong ? 'strong-buy' : isTriggered ? 'buy-triggered' : 'buy')
-        : (isStrong ? 'strong-sell' : isTriggered ? 'sell-triggered' : 'sell');
+        ? (isTriggered ? 'buy-triggered' : 'buy')
+        : (isTriggered ? 'sell-triggered' : 'sell');
       const badgeLabel = isTriggered
         ? `${s.signal_type}<span class="tag-sub">TRIGGERED</span>`
-        : (isStrong ? '🔥 STRONG ' : '') + s.signal_type;
+        : s.signal_type;
       const adxLabel = s.adx_value != null ? Number(s.adx_value).toFixed(1) : '—';
 
       return `
-      <div class="signal-row${isStrong ? ' strong-row' : ''}${isTriggered ? ' triggered-row' : ''}">
+      <div class="signal-row${isTriggered ? ' triggered-row' : ''}">
         <div class="sig-badge ${badgeClass}">${badgeLabel}</div>
         <div class="sig-main">
           <div class="sig-symbol" data-symbol="${s.trading_symbol}" data-tf="${s.timeframe}" data-tier="${tierOf(s)}">${s.trading_symbol}</div>
@@ -1864,8 +1839,10 @@
           ${s.target_profit_2 != null ? tgt(2, s.target_profit_2) : ''}
           ${s.target_profit_3 != null ? tgt(3, s.target_profit_3) : ''}
         </div>
-        <div class="sig-pnl ${pnlClass}">
-          ${isTriggered ? '—' : (showAmount != null ? '₹' + showAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—')}
+        <div class="sig-pnl ${isTriggered ? '' : (isStrictTier ? pnlClass : favUnfavClass)}">
+          ${isTriggered ? '—' : (isStrictTier
+            ? (showAmount != null ? '₹' + showAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—')
+            : favUnfavLabel)}
           <div class="sig-sub">
             <span class="status-tag ${isTriggered ? 'not-counted' : statusClass}">${isTriggered ? 'Not counted' : statusTag}</span>
             ${!isTriggered && hasLiveLtp ? `<div class="sig-sub" style="margin-top:2px;">mark-to-market${tier > 0 ? `, ${tier === 1 ? '50' : '80'}% booked` : ''}</div>` : ''}
@@ -1883,15 +1860,6 @@
           <div class="exact">${fmtExactTime(s.generated_at)}</div>
           <div class="ago">${timeAgo(s.generated_at)}</div>
         </div>
-        ${isStrong ? `
-        <div class="strong-detail">
-          <span>ADX <b class="pos">${adxLabel} (trending)</b></span>
-          <span>4H Trend <b class="pos">${s.trend_4h === 'up' ? '▲ Up' : s.trend_4h === 'down' ? '▼ Down' : '—'}</b></span>
-          <span>VWAP <b class="pos">Favor</b></span>
-          <span>Volume <b class="pos">Favor</b></span>
-          <span>RSI <b class="pos">Favor${s.rsi_value != null ? ` (${Number(s.rsi_value).toFixed(1)})` : ''}</b></span>
-          <span>Volatility <b class="pos">Not spiking</b></span>
-        </div>` : ''}
       </div>
     `;
   }
@@ -1918,20 +1886,18 @@
   // TradingView link is still offered inside the modal for cross-checking.
   // Which EXTRA indicators show depends on the tier of the signal that was
   // clicked -- Triggered: EMA only (nothing confirmed it yet). Buy/Sell:
-  // + ADX (that's what promoted it from Triggered). Strong Buy/Strong Sell:
-  // + ADX + VWAP + Volume + RSI (everything classify_strength checked). ----
+  // + ADX (that's what promoted it from Triggered). ----
   let chart, candleSeries, emaFastSeries, emaSlowSeries, vwapSeries, chartResizeObserver;
   let adxChart, adxSeries, adxThresholdLine, plusDiSeries, minusDiSeries, adxResizeObserver;
   let volumeChart, volumeSeries, volumeAvgSeries, volumeResizeObserver;
   let rsiChart, rsiSeries, rsiResizeObserver;
   let chartSymbol = null;
   let chartTf = '5m';
-  let chartTier = 'triggered';  // 'triggered' | 'confirmed' | 'strong'
+  let chartTier = 'triggered';  // 'triggered' | 'confirmed'
   let chartPollTimer = null;
 
   function tierOf(s) {
-    if (!isAdxConfirmed(s)) return 'triggered';
-    return s.strength === 'strong' ? 'strong' : 'confirmed';
+    return isAdxConfirmed(s) ? 'confirmed' : 'triggered';
   }
 
   function ensureChart() {
@@ -2012,16 +1978,14 @@
     rsiSeries.createPriceLine({ price: 50, color: '#57647A', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false, title: '50' });
   }
 
-  // Shows/hides the ADX/Volume/RSI sub-panels for the given tier, creating
-  // each lazily the first time it's actually needed.
+  // Shows/hides the ADX/VWAP+Volume/RSI sub-panels for the given tier,
+  // creating each lazily the first time it's actually needed.
   function applyTierPanels(tier) {
-    const showAdx = tier === 'confirmed' || tier === 'strong';
-    const showStrongExtras = tier === 'strong';
-    document.getElementById('chartAdxWrap').style.display = showAdx ? '' : 'none';
-    document.getElementById('chartVwapVolWrap').style.display = showStrongExtras ? '' : 'none';
-    document.getElementById('chartRsiWrap').style.display = showStrongExtras ? '' : 'none';
-    if (showAdx) ensureAdxChart();
-    if (showStrongExtras) { ensureVolumeChart(); ensureRsiChart(); }
+    const showConfirmedExtras = tier === 'confirmed';
+    document.getElementById('chartAdxWrap').style.display = showConfirmedExtras ? '' : 'none';
+    document.getElementById('chartVwapVolWrap').style.display = showConfirmedExtras ? '' : 'none';
+    document.getElementById('chartRsiWrap').style.display = showConfirmedExtras ? '' : 'none';
+    if (showConfirmedExtras) { ensureAdxChart(); ensureVolumeChart(); ensureRsiChart(); }
   }
 
   async function loadChart() {
@@ -2037,7 +2001,7 @@
       candleSeries.setData(data.candles);
       emaFastSeries.setData(data.ema_fast);
       emaSlowSeries.setData(data.ema_slow);
-      vwapSeries.setData(chartTier === 'strong' ? (data.vwap || []) : []);
+      vwapSeries.setData(chartTier === 'confirmed' ? (data.vwap || []) : []);
       chart.timeScale().fitContent();
       // Lightweight Charts locks the price axis to a fixed range the moment
       // a viewer drags/zooms it, and never re-fits on its own after that —
@@ -2047,7 +2011,7 @@
       // auto-fit on every open/switch, regardless of any prior manual zoom.
       chart.priceScale('right').applyOptions({ autoScale: true });
 
-      if (chartTier === 'confirmed' || chartTier === 'strong') {
+      if (chartTier === 'confirmed') {
         ensureAdxChart();
         adxSeries.setData(data.adx || []);
         plusDiSeries.setData(data.plus_di || []);
@@ -2063,8 +2027,7 @@
           }
         }
         adxChart.timeScale().fitContent();
-      }
-      if (chartTier === 'strong') {
+
         ensureVolumeChart();
         volumeSeries.setData((data.volume || []).map(v => ({ ...v, color: 'rgba(91, 141, 239, 0.5)' })));
         volumeAvgSeries.setData(data.volume_avg || []);
@@ -2079,12 +2042,10 @@
         `<span><b style="color:var(--amber)">●</b> EMA ${data.ema_fast_period}</span>`,
         `<span><b style="color:#5B8DEF">●</b> EMA ${data.ema_slow_period}</span>`,
       ];
-      if (chartTier === 'confirmed' || chartTier === 'strong') {
+      if (chartTier === 'confirmed') {
         legendParts.push(`<span><b style="color:#E8B34F">●</b> ADX ${data.adx_period}</span>`);
         legendParts.push(`<span><b style="color:#3DDC97">●</b> +DI</span>`);
         legendParts.push(`<span><b style="color:#FF6B5C">●</b> -DI</span>`);
-      }
-      if (chartTier === 'strong') {
         legendParts.push(`<span><b style="color:#B47EF5">●</b> VWAP</span>`);
         legendParts.push(`<span><b style="color:#5B8DEF">●</b> Volume</span>`);
         legendParts.push(`<span><b style="color:#3DDC97">●</b> RSI ${data.rsi_period}</span>`);
@@ -2092,8 +2053,7 @@
       if (data.live_bar) legendParts.push(`<span style="color:var(--green)">● live</span>`);
       legend.innerHTML = legendParts.join('');
 
-      const tierLabel = chartTier === 'strong' ? 'Strong Buy/Sell — full confirmation set'
-        : chartTier === 'confirmed' ? 'Buy/Sell — ADX+DI confirmed'
+      const tierLabel = chartTier === 'confirmed' ? 'Buy/Sell — ADX+DI confirmed'
         : 'Buy/Sell Triggered — EMA only, ADX+DI not yet confirmed';
       document.getElementById('chartSub').textContent =
         `${data.name || ''} · ${chartTf.toUpperCase()} · ${tierLabel}`;
@@ -2566,15 +2526,15 @@
     if (e.target.id === 'dailyFavModal') document.getElementById('dailyFavModal').classList.remove('show');
   });
 
-  // ---- Category Performance: Normal / Strong / Strict Extreme / Very     ----
-  // ---- Strong / Fair -- independent slices (not a partition -- a signal
-  // can count in more than one row), so tiers can be compared side by side
-  // the same way the user compares them manually today. Reuses the same
-  // bucket helpers as the Accuracy study (emptyPeriodBucket/addToBucket)
-  // and the same ratio/pnl formatters as Daily Favorable.
+  // ---- Category Performance: Normal (every confirmed Buy/Sell) / Strict  ----
+  // ---- Extreme / Very Strong / Fair -- independent slices (not a
+  // partition -- a Strict-tiered signal is ALSO counted in Normal), so
+  // tiers can be compared side by side the same way the user compares them
+  // manually today. Reuses the same bucket helpers as the Accuracy study
+  // (emptyPeriodBucket/addToBucket) and the same ratio/pnl formatters as
+  // Daily Favorable.
   const CATEGORY_DEFS = [
-    { key: 'normal', label: 'Normal (Buy / Sell)', match: s => s.strength !== 'strong' },
-    { key: 'strong', label: 'Strong (Buy / Sell)', match: s => s.strength === 'strong' },
+    { key: 'normal', label: 'Normal (Buy / Sell)', match: s => true },
     { key: 'extreme', label: 'Strict Mode: Extreme', match: s => s.strict_tier === 'extreme' },
     { key: 'very_strong', label: 'Strict Mode: Very Strong', match: s => s.strict_tier === 'very_strong' },
     { key: 'fair', label: 'Strict Mode: Fair', match: s => s.strict_tier === 'fair' },
@@ -2621,6 +2581,10 @@
   function renderCategoryPerformance(cats) {
     const table = document.getElementById('categoryPerfTable');
     const rows = cats.map(c => {
+      // Only Strict Mode rows show the Rs 1L-notional P&L/ROI -- Normal
+      // (unfiltered Buy/Sell) shows Favourable/Unfavourable only, per the
+      // "don't show ₹ for Normal" rule.
+      const isStrict = c.key !== 'normal';
       const ratioClass = c.favorable > c.unfavorable ? 'pos' : c.unfavorable > c.favorable ? 'neg' : '';
       const pnlClass = c.netPnl > 0 ? 'pos' : c.netPnl < 0 ? 'neg' : '';
       const roiClass = c.roiPercent > 0 ? 'pos' : c.roiPercent < 0 ? 'neg' : '';
@@ -2634,8 +2598,8 @@
         <td class="pos">${c.favorable}</td>
         <td class="neg">${c.unfavorable}</td>
         <td class="${ratioClass}">${ratioLabel(c)}</td>
-        <td class="${pnlClass}">${counted ? pnlLabel(c.netPnl) : '—'}</td>
-        <td class="${roiClass}">${roiLabel(c)}</td>
+        <td class="${isStrict ? pnlClass : ''}">${isStrict ? (counted ? pnlLabel(c.netPnl) : '—') : '—'}</td>
+        <td class="${isStrict ? roiClass : ''}">${isStrict ? roiLabel(c) : '—'}</td>
       </tr>`;
     }).join('');
     table.innerHTML = `
@@ -3135,14 +3099,11 @@
         "Symbol": s.trading_symbol,
         "Name": s.name || "",
         "Signal": s.signal_type,
-        "Tier": !countsTowardPnl(s) ? 'TRIGGERED' : (s.strength === 'strong' ? 'STRONG' : 'confirmed'),
+        "Tier": !countsTowardPnl(s) ? 'TRIGGERED' : 'confirmed',
         "ADX Status": s.adx_status || "",
         "ADX Value": s.adx_value ?? "",
-        "4H Trend": s.trend_4h || "",
-        "VWAP": s.vwap_status || "",
-        "Volume": s.volume_status || "",
-        "RSI": s.rsi_status || "",
-        "RSI Value": s.rsi_value ?? "",
+        "Strict Tier": s.strict_tier || "",
+        "Strict Score": s.strict_score ?? "",
         "Indicator": s.indicator,
         "Timeframe": s.timeframe,
         "Entry Price": s.entry_price,
