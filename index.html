@@ -1196,9 +1196,9 @@
       </div>
       <div class="filter-group" id="strictFilter">
         <div class="chip" id="strictModeToggle" title="5m/15m only: scores 8 trend/anti-consolidation conditions, plus a 09:30-14:45 IST time gate">Strict Mode</div>
-        <div class="chip strict-tier-chip" data-strict="extreme" style="display:none;" title="A PERFECT 8/8 score PLUS the entry-extension condition: price hasn't run more than 1.5x ATR beyond its own EMA9 -- a 7/8 Very Strong or any Fair setup is never promoted, no matter how good the entry looks">🚀 Extreme</div>
-        <div class="chip strict-tier-chip" data-strict="very_strong" style="display:none;" title="Score 7-8 of 8: EMA50 trend, higher-timeframe trend, VWAP, ADX rising, DI direction, ATR expansion, EMA9/26 gap widening">🔥 Very Strong</div>
-        <div class="chip strict-tier-chip" data-strict="fair" style="display:none;" title="Score 5-6 of 8 on the same 8 conditions">✓ Fair</div>
+        <div class="chip strict-tier-chip" data-strict="extreme" style="display:none;" title="A PERFECT 8/8 score PLUS the entry-extension condition: price hasn't run more than 1.5x ATR beyond its own EMA9 -- a 7/8 Very Strong or any Fair setup is never promoted, no matter how good the entry looks. Also requires ATR not to be abnormally spiked (see Very Strong/Fair)">🚀 Extreme</div>
+        <div class="chip strict-tier-chip" data-strict="very_strong" style="display:none;" title="Score 7-8 of 8: EMA50 trend, higher-timeframe trend, VWAP, ADX rising, DI direction, ATR expansion, EMA9/26 gap widening. Also requires ATR not to be spiking more than 2.5x its own 20-bar average (news/gap/panic, not a healthy trend) -- excludes ALL tiers, same on BUY and SELL">🔥 Very Strong</div>
+        <div class="chip strict-tier-chip" data-strict="fair" style="display:none;" title="Score 5-6 of 8 on the same 8 conditions. Also excluded if ATR is spiking more than 2.5x its own 20-bar average">✓ Fair</div>
       </div>
       <input type="date" class="date-input" id="dateFrom" title="From date">
       <input type="date" class="date-input" id="dateTo" title="To date (leave blank for today)">
@@ -1890,6 +1890,7 @@
           <span>VWAP <b class="pos">Favor</b></span>
           <span>Volume <b class="pos">Favor</b></span>
           <span>RSI <b class="pos">Favor${s.rsi_value != null ? ` (${Number(s.rsi_value).toFixed(1)})` : ''}</b></span>
+          <span>Volatility <b class="pos">Not spiking</b></span>
         </div>` : ''}
       </div>
     `;
