@@ -579,8 +579,9 @@
      direction, ATR expansion, EMA9/26 gap widening) plus two unscored
      gates: a 09:30-14:45 IST time window, and an entry-extension check
      (price hasn't run too far beyond its own EMA9). Score 7-8/8 = Very
-     Strong, 5-6/8 = Fair -- either gets PROMOTED to Extreme if the entry
-     isn't extended. A label only (never changes whether a signal fires)
+     Strong, 5-6/8 = Fair -- a PERFECT 8/8 score is PROMOTED to Extreme if
+     the entry also isn't extended (7/8 Very Strong and any Fair setup are
+     never promoted). A label only (never changes whether a signal fires)
      so real P&L by tier can be compared against everything else. */
   .strict-badge {
     display: inline-block; margin-top: 3px; font-size: 9px; letter-spacing: 0.04em;
@@ -1177,7 +1178,7 @@
       </div>
       <div class="filter-group" id="strictFilter">
         <div class="chip" id="strictModeToggle" title="5m/15m only: scores 8 trend/anti-consolidation conditions, plus a 09:30-14:45 IST time gate">Strict Mode</div>
-        <div class="chip strict-tier-chip" data-strict="extreme" style="display:none;" title="Very Strong or Fair PLUS the entry-extension condition: price hasn't run more than 1.5x ATR beyond its own EMA9 -- a shallow pullback entry, not a stretched/late one">🚀 Extreme</div>
+        <div class="chip strict-tier-chip" data-strict="extreme" style="display:none;" title="A PERFECT 8/8 score PLUS the entry-extension condition: price hasn't run more than 1.5x ATR beyond its own EMA9 -- a 7/8 Very Strong or any Fair setup is never promoted, no matter how good the entry looks">🚀 Extreme</div>
         <div class="chip strict-tier-chip" data-strict="very_strong" style="display:none;" title="Score 7-8 of 8: EMA50 trend, higher-timeframe trend, VWAP, ADX rising, DI direction, ATR expansion, EMA9/26 gap widening">🔥 Very Strong</div>
         <div class="chip strict-tier-chip" data-strict="fair" style="display:none;" title="Score 5-6 of 8 on the same 8 conditions">✓ Fair</div>
       </div>
