@@ -236,6 +236,20 @@
     margin-bottom: 6px;
   }
 
+  /* Header index tickers (NIFTY 50 / BANK NIFTY / FIN NIFTY / SENSEX) --
+     unrelated to the tracked stock universe above; polled from /indices
+     every ~20s (see app/main.py's run_index_quote_loop). */
+  .index-ticker {
+    display: flex; flex-wrap: wrap; gap: 14px;
+    font-family: var(--font-mono); font-size: 11px; margin-bottom: 8px;
+  }
+  .index-ticker .idx-item { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+  .index-ticker .idx-label { color: var(--text-dim); }
+  .index-ticker .idx-value { color: var(--text-primary); font-weight: 600; }
+  .index-ticker .idx-change { font-size: 10px; }
+  .index-ticker .idx-change.pos { color: var(--green); }
+  .index-ticker .idx-change.neg { color: var(--red); }
+
   h1 {
     font-family: var(--font-display);
     font-size: 28px;
@@ -1127,6 +1141,7 @@
       <button class="mobile-menu-btn" id="mobileMenuBtn" title="Stats & tools" aria-label="Open stats panel">☰</button>
       <div class="header-left">
         <div class="brand-eyebrow" id="moversTrigger" style="cursor:pointer; text-decoration: underline dotted; text-underline-offset: 3px;">NIFTY 100 · MIDCAP 100 · SMALLCAP 100</div>
+        <div class="index-ticker" id="indexTicker"></div>
         <h1>Signal Desk</h1>
       </div>
       <div class="header-right">
@@ -3182,11 +3197,38 @@
     XLSX.writeFile(wb, `SignalDesk_PnL_${dateFrom}_to_${dateTo}.xlsx`);
   });
 
+  // ---- Header index tickers (NIFTY 50 / BANK NIFTY / FIN NIFTY / SENSEX) ----
+  // -- unrelated to the tracked stock universe above the fold; backend
+  // polls these separately (see /indices, run_index_quote_loop) since
+  // SENSEX is BSE and the main tick pipeline is NSE-only.
+  function renderIndexTicker(rows) {
+    const el = document.getElementById('indexTicker');
+    el.innerHTML = rows.map(r => {
+      if (r.ltp == null) return `<span class="idx-item"><span class="idx-label">${r.label}</span> <span class="idx-value">—</span></span>`;
+      const cls = r.change > 0 ? 'pos' : r.change < 0 ? 'neg' : '';
+      const sign = r.change > 0 ? '+' : '';
+      return `<span class="idx-item">
+        <span class="idx-label">${r.label}</span>
+        <span class="idx-value">${r.ltp.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+        <span class="idx-change ${cls}">${r.change != null ? `${sign}${r.change.toLocaleString('en-IN', { maximumFractionDigits: 2 })} (${sign}${r.change_percent}%)` : ''}</span>
+      </span>`;
+    }).join('');
+  }
+
+  async function fetchIndices() {
+    try {
+      const res = await fetch(`${API_BASE}/indices`);
+      if (!res.ok) throw new Error('not available');
+      renderIndexTicker(await res.json());
+    } catch (e) { /* ticker just stays at its last known state */ }
+  }
+
   // ---- Boot ----
   function refresh() {
     fetchHealth();
     fetchSignals();
     loadTradingModeSummary();
+    fetchIndices();
     if (activeMainTab === 'direction') loadDirection();
     if (activeMainTab === 'realorders') loadRealOrders();
   }
