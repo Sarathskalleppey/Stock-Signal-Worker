@@ -1158,7 +1158,7 @@
       </div>
     </header>
 
-    <div class="filters">
+    <div class="filters" id="stockFiltersBar">
       <div class="filter-group" id="signalFilter">
         <div class="chip active" data-signal="ALL">All</div>
         <div class="chip" data-signal="BUY">Buy</div>
@@ -1908,6 +1908,7 @@
   let chartSymbol = null;
   let chartTf = '5m';
   let chartTier = 'triggered';  // 'triggered' | 'confirmed'
+  let chartMode = 'stock';      // 'stock' | 'commodity' -- picks the endpoint/legend/tf-set
   let chartPollTimer = null;
 
   function tierOf(s) {
@@ -2002,8 +2003,41 @@
     if (showConfirmedExtras) { ensureAdxChart(); ensureVolumeChart(); ensureRsiChart(); }
   }
 
+  async function loadCommodityChart() {
+    const legend = document.getElementById('chartLegend');
+    try {
+      const res = await fetch(`${API_BASE}/commodity-candles/${encodeURIComponent(chartSymbol)}?timeframe=${chartTf}`);
+      const data = await res.json();
+      if (data.error) { legend.innerHTML = `<span style="color:var(--red)">${data.error}</span>`; return; }
+
+      ensureChart();
+      chart.applyOptions({ timeScale: { timeVisible: chartTf !== '1d' } });
+      candleSeries.setData(data.candles);
+      emaFastSeries.setData(data.ema_fast);
+      emaSlowSeries.setData(data.ema_slow);
+      vwapSeries.setData(data.vwap || []);
+      chart.timeScale().fitContent();
+      chart.priceScale('right').applyOptions({ autoScale: true });
+
+      const legendParts = [
+        `<span><b style="color:var(--amber)">●</b> EMA ${data.ema_fast_period}</span>`,
+        `<span><b style="color:#5B8DEF">●</b> EMA ${data.ema_slow_period}</span>`,
+        `<span><b style="color:#B47EF5">●</b> VWAP</span>`,
+      ];
+      if (data.live_bar) legendParts.push(`<span style="color:var(--green)">● live</span>`);
+      legend.innerHTML = legendParts.join('');
+
+      const ltpText = data.ltp != null ? `LTP ₹${Number(data.ltp).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : 'LTP —';
+      document.getElementById('chartSub').textContent =
+        `${data.display_name || ''} · ${data.trading_symbol || ''} · ${chartTf.toUpperCase()} · ${ltpText}`;
+    } catch (e) {
+      legend.innerHTML = `<span style="color:var(--red)">Couldn't load chart data — check the backend is reachable.</span>`;
+    }
+  }
+
   async function loadChart() {
     if (!chartSymbol) return;
+    if (chartMode === 'commodity') return loadCommodityChart();
     const legend = document.getElementById('chartLegend');
     try {
       const res = await fetch(`${API_BASE}/candles/${encodeURIComponent(chartSymbol)}?timeframe=${chartTf}`);
@@ -2076,11 +2110,20 @@
     }
   }
 
+  // Commodity timeframes are 15m/4h/1d only (no 5m) -- toggling this shows/
+  // hides the 5m chip in the shared TF filter rather than duplicating it.
+  function applyChartModeTfChips(mode) {
+    const fiveMinChip = document.querySelector('#chartTfFilter .chip[data-tf="5m"]');
+    if (fiveMinChip) fiveMinChip.style.display = mode === 'commodity' ? 'none' : '';
+  }
+
   function openChart(symbol, timeframe, tier) {
     if (!symbol) return;
+    chartMode = 'stock';
     chartSymbol = symbol;
     chartTf = timeframe || '5m';
     chartTier = tier || 'triggered';
+    applyChartModeTfChips(chartMode);
     document.querySelectorAll('#chartTfFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.tf === chartTf));
     document.getElementById('chartSymbol').textContent = symbol;
     document.getElementById('chartSub').textContent = 'Loading…';
@@ -2092,6 +2135,31 @@
     // container has zero size.
     document.getElementById('chartModal').classList.add('show');
     applyTierPanels(chartTier);
+    loadChart();
+    if (chartPollTimer) clearInterval(chartPollTimer);
+    chartPollTimer = setInterval(loadChart, 20000);
+  }
+
+  function openCommodityChart(symbol, timeframe) {
+    if (!symbol) return;
+    chartMode = 'commodity';
+    chartSymbol = symbol;
+    chartTf = timeframe || '15m';
+    applyChartModeTfChips(chartMode);
+    document.querySelectorAll('#chartTfFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.tf === chartTf));
+    document.getElementById('chartSymbol').textContent = symbol;
+    document.getElementById('chartSub').textContent = 'Loading…';
+    document.getElementById('chartLegend').textContent = '';
+    // MCX has no reliable public TradingView symbol mapping the way NSE
+    // does -- this points at TradingView's own symbol search for MCX
+    // futures rather than guessing a continuous-contract ticker that might
+    // not resolve.
+    document.getElementById('chartTvLink').href = `https://www.tradingview.com/symbols/MCX-${symbol}1!/`;
+    document.getElementById('chartModal').classList.add('show');
+    // Commodities never have ADX/RSI/Volume sub-panels (the backend doesn't
+    // compute those for this asset class) -- always the "triggered"-shaped
+    // (EMA + VWAP only) chart layout.
+    applyTierPanels('triggered');
     loadChart();
     if (chartPollTimer) clearInterval(chartPollTimer);
     chartPollTimer = setInterval(loadChart, 20000);
@@ -2119,6 +2187,12 @@
     const target = e.target.closest('.sig-symbol');
     if (!target) return;
     openChart(target.dataset.symbol, target.dataset.tf, target.dataset.tier);
+  });
+
+  document.getElementById('commodityContainer').addEventListener('click', e => {
+    const target = e.target.closest('.sig-symbol');
+    if (!target || !target.dataset.symbol) return;
+    openCommodityChart(target.dataset.symbol, target.dataset.tf);
   });
 
   // ---- Market movers modal (all 300: signal-triggered stocks first, then
@@ -2830,7 +2904,7 @@
     <div class="signal-row">
       <div class="sig-badge ${badgeClass}">${s.signal_type}</div>
       <div class="sig-main">
-        <div class="sig-symbol">${s.display_name || s.symbol || s.trading_symbol}</div>
+        <div class="sig-symbol" data-symbol="${s.symbol || ''}" data-tf="${s.timeframe}">${s.display_name || s.symbol || s.trading_symbol}</div>
         <div class="sig-sub">${s.indicator || 'EMA'} · ${s.trading_symbol || ''}</div>
       </div>
       <div class="sig-entry">
@@ -3083,6 +3157,11 @@
     document.getElementById('realOrdersTab').style.display = tab === 'realorders' ? '' : 'none';
     document.getElementById('commodityTab').style.display = tab === 'commodity' ? '' : 'none';
     document.getElementById('feedCount').style.display = tab === 'history' ? '' : 'none';
+    // Commodities are a separate asset class from everything the top filter
+    // bar controls (Buy/Sell/status/Strict Mode/date range/symbol search all
+    // apply to stock data) -- hide it entirely so the tab reads as its own
+    // exclusive section, not a cramped extra option among stock filters.
+    document.getElementById('stockFiltersBar').style.display = tab === 'commodity' ? 'none' : '';
     if (tab === 'direction') {
       document.getElementById('directionSummary').innerHTML = `<div class="accuracy-empty">Loading…</div>`;
       document.getElementById('directionTfBreakdown').innerHTML = '';
