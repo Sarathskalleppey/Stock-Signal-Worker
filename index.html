@@ -547,6 +547,8 @@
 
   .sig-entry { text-align: right; font-weight: 600; }
   .sig-entry .sig-sub { text-align: right; }
+  .sig-entry .sig-sub.pos { color: var(--green); }
+  .sig-entry .sig-sub.neg { color: var(--red); }
 
   .sig-levels { text-align: right; font-size: 10.5px; line-height: 1.5; }
   .sig-levels .sl { color: var(--red); }
@@ -1838,6 +1840,7 @@
         <div class="sig-entry">
           ₹${Number(s.entry_price).toFixed(2)}
           <div class="sig-sub">entry</div>
+          ${hasLiveLtp ? `<div class="sig-sub ${(s.signal_type === 'BUY') === (Number(mover.ltp) >= Number(s.entry_price)) ? 'pos' : 'neg'}">LTP ₹${Number(mover.ltp).toFixed(2)}</div>` : ''}
         </div>
         <div class="sig-levels">
           <div class="sl">${slLabel} ₹${activeStop != null ? activeStop.toFixed(2) : '—'}</div>
