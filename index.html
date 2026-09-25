@@ -1792,10 +1792,17 @@
       const pnlKnown = s.pnl_amount !== null && s.pnl_amount !== undefined;
       const realized = Number(s.realized_pnl_amount || 0);
       // Once closed, pnl_amount is the final combined figure. While still
-      // open, show whatever's already been LOCKED IN from earlier partial
-      // exits (target_1/target_2 hit) rather than a bare "—", since that's
-      // real, already-realized money even though the trade isn't done.
-      const showAmount = pnlKnown ? Number(s.pnl_amount) : (tier > 0 ? realized : null);
+      // open, show the LIVE mark-to-market value -- realized profit from
+      // any earlier partial exits, PLUS the unrealized move on whatever
+      // quantity remains, priced at the current LTP (same provisionalPnl()
+      // the sidebar's Net P&L card and Category Performance already use).
+      // Falls back to just the realized partial (or "—") if this symbol's
+      // live price isn't in the latest market-movers fetch yet.
+      const mover = lastMoversBySymbol[s.trading_symbol];
+      const hasLiveLtp = !pnlKnown && mover && mover.ltp != null;
+      const showAmount = pnlKnown
+        ? Number(s.pnl_amount)
+        : (hasLiveLtp ? provisionalPnl(s, lastMoversBySymbol) : (tier > 0 ? realized : null));
       const pnlClass = showAmount != null ? (showAmount >= 0 ? "pos" : "neg") : "";
       const statusTag = STATUS_LABELS[s.status === "open" ? "open" : s.exit_reason] || s.status;
       const statusClass = s.status === "open" ? "open" : (s.exit_reason || "");
@@ -1842,7 +1849,8 @@
           ${isTriggered ? '—' : (showAmount != null ? '₹' + showAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—')}
           <div class="sig-sub">
             <span class="status-tag ${isTriggered ? 'not-counted' : statusClass}">${isTriggered ? 'Not counted' : statusTag}</span>
-            ${!isTriggered && !pnlKnown && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
+            ${!isTriggered && hasLiveLtp ? `<div class="sig-sub" style="margin-top:2px;">mark-to-market${tier > 0 ? `, ${tier === 1 ? '50' : '80'}% booked` : ''}</div>` : ''}
+            ${!isTriggered && !pnlKnown && !hasLiveLtp && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
           </div>
         </div>
         <div class="sig-tf">
