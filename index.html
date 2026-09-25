@@ -2877,14 +2877,33 @@
   // ---- Commodity tab (MCX: Gold/Gold Mini/Silver/Silver Mini/Natural   ----
   // Gas/Natural Gas Mini/Crude Oil/Crude Oil Mini) -- reuses the exact   ----
   // same .signal-row card shape as the stock feed above, minus the      ----
-  // ADX/strict-tier/charges fields that don't apply to this asset class,----
-  // and minus click-to-open-chart (no /candles endpoint for commodities ----
-  // yet). Shows Favourable/Unfavourable only, same as Normal stock rows.----
+  // ADX/strict-tier/charges fields that don't apply to this asset class.----
+  // Shows Favourable/Unfavourable only, same as Normal stock rows.      ----
+  let commodityLtpBySymbol = {};  // symbol -> ltp, from GET /commodities
+
+  // Direction-only mark-to-market: entry vs current LTP. No ₹ P&L shown for
+  // commodities (see commodity_signal_outcomes' quantity=1 column comment),
+  // so this is purely a sign, mirroring stocks' provisionalPnl() but
+  // without the quantity-scaled currency amount.
+  function commodityProvisionalDirection(s, ltp) {
+    if (ltp == null) return null;
+    const entry = Number(s.entry_price);
+    return s.signal_type === 'BUY' ? (ltp - entry) : (entry - ltp);
+  }
+
   function commoditySignalCard(s) {
     const tier = Number(s.tier || 0);
     const pnlKnown = s.pnl_amount !== null && s.pnl_amount !== undefined;
     const realized = Number(s.realized_pnl_amount || 0);
-    const showAmount = pnlKnown ? Number(s.pnl_amount) : (tier > 0 ? realized : null);
+    const ltp = commodityLtpBySymbol[s.symbol];
+    const hasLiveLtp = !pnlKnown && ltp != null;
+    // Once closed, go by the final pnl_amount's sign. While open: if a
+    // target has already partially booked (tier > 0), that realized amount
+    // already reflects direction; otherwise (tier 0, nothing booked yet)
+    // fall back to live LTP vs entry, same reasoning as the stock feed's
+    // mark-to-market Favourable/Unfavourable for still-open Normal signals.
+    const showAmount = pnlKnown ? Number(s.pnl_amount)
+      : (tier > 0 ? realized : (hasLiveLtp ? commodityProvisionalDirection(s, ltp) : null));
     const favUnfavClass = showAmount == null ? "" : (showAmount >= 0 ? "pos" : "neg");
     const favUnfavLabel = showAmount == null ? "—" : (showAmount >= 0 ? "Favourable" : "Unfavourable");
 
@@ -2910,6 +2929,7 @@
       <div class="sig-entry">
         ₹${Number(s.entry_price).toFixed(2)}
         <div class="sig-sub">entry</div>
+        ${hasLiveLtp ? `<div class="sig-sub ${(s.signal_type === 'BUY') === (Number(ltp) >= Number(s.entry_price)) ? 'pos' : 'neg'}">LTP ₹${Number(ltp).toFixed(2)}</div>` : ''}
       </div>
       <div class="sig-levels">
         <div class="sl">${slLabel} ₹${activeStop != null ? activeStop.toFixed(2) : '—'}</div>
@@ -2921,7 +2941,8 @@
         ${favUnfavLabel}
         <div class="sig-sub">
           <span class="status-tag ${statusClass}">${statusTag}</span>
-          ${!pnlKnown && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
+          ${!pnlKnown && hasLiveLtp ? `<div class="sig-sub" style="margin-top:2px;">mark-to-market${tier > 0 ? `, ${tier === 1 ? '50' : '80'}% booked` : ''}</div>` : ''}
+          ${!pnlKnown && !hasLiveLtp && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
         </div>
       </div>
       <div class="sig-tf">${s.timeframe}</div>
@@ -2946,9 +2967,18 @@
     const el = document.getElementById('commodityContainer');
     el.innerHTML = `<div class="empty-state">Loading…</div>`;
     try {
-      const res = await fetch(`${API_BASE}/commodity-history?limit=200`);
-      if (!res.ok) throw new Error('not available');
-      const rows = await res.json();
+      const [instrumentsRes, historyRes] = await Promise.all([
+        fetch(`${API_BASE}/commodities`),
+        fetch(`${API_BASE}/commodity-history?limit=200`),
+      ]);
+      if (instrumentsRes.ok) {
+        const instruments = await instrumentsRes.json();
+        commodityLtpBySymbol = Object.fromEntries(
+          instruments.filter(i => i.ltp != null).map(i => [i.symbol, i.ltp]),
+        );
+      }
+      if (!historyRes.ok) throw new Error('not available');
+      const rows = await historyRes.json();
       renderCommoditySignals(rows);
     } catch (e) {
       el.innerHTML = `<div class="empty-state">Couldn't load commodity signals. Backend may not have this feature deployed yet.</div>`;
@@ -3371,6 +3401,7 @@
     fetchIndices();
     if (activeMainTab === 'direction') loadDirection();
     if (activeMainTab === 'realorders') loadRealOrders();
+    if (activeMainTab === 'commodity') loadCommodity();
   }
   refresh();
   setInterval(refresh, 15000);
