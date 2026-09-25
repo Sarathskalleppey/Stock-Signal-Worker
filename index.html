@@ -1236,8 +1236,9 @@
       <div class="accuracy-note" style="margin-bottom:14px;">
         MCX commodities (Gold, Gold Mini, Silver, Silver Mini, Natural Gas, Natural Gas Mini, Crude Oil, Crude Oil
         Mini) -- 15m/4h/1d only, EMA 9/21 crossover, gated by same-timeframe VWAP alignment and a consolidation/
-        breakout check (suppressed inside a range-bound market unless price genuinely breaks out of it). A separate
-        asset class from the stock feed above -- shows Favourable/Unfavourable only, same as Normal stock signals.
+        breakout check: a crossover inside a range-bound market is held rather than dropped, and fires the moment a
+        later candle actually breaks out of that range (⚡ Breakout tag), without needing a fresh EMA cross. A
+        separate asset class from the stock feed above -- shows Favourable/Unfavourable only, same as Normal stock signals.
       </div>
       <div id="commodityContainer">
         <div class="empty-state">Loading…</div>
@@ -2945,7 +2946,10 @@
           ${!pnlKnown && !hasLiveLtp && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
         </div>
       </div>
-      <div class="sig-tf">${s.timeframe}</div>
+      <div class="sig-tf">
+        ${s.timeframe}
+        ${s.breakout ? `<div class="strict-badge" title="Suppressed while range-bound, fired once price actually broke out of that range">⚡ Breakout</div>` : ''}
+      </div>
       <div class="sig-time">
         <div class="exact">${fmtExactTime(s.generated_at)}</div>
         <div class="ago">${timeAgo(s.generated_at)}</div>
