@@ -576,10 +576,12 @@
   /* Strict multi-layer SCORING filter (5m/15m only — see backend
      signals/strict_filter.py): 8 scored trend/anti-consolidation
      conditions (EMA50 + higher-timeframe trend, VWAP, ADX rising + DI
-     direction, ATR expansion, EMA9/26 gap widening) plus an unscored
-     09:30-14:45 IST time gate. Score 7-8/8 = Very Strong, 5-6/8 = Fair.
-     A label only (never changes whether a signal fires) so real P&L by
-     tier can be compared against everything else. */
+     direction, ATR expansion, EMA9/26 gap widening) plus two unscored
+     gates: a 09:30-14:45 IST time window, and an entry-extension check
+     (price hasn't run too far beyond its own EMA9). Score 7-8/8 = Very
+     Strong, 5-6/8 = Fair -- either gets PROMOTED to Extreme if the entry
+     isn't extended. A label only (never changes whether a signal fires)
+     so real P&L by tier can be compared against everything else. */
   .strict-badge {
     display: inline-block; margin-top: 3px; font-size: 9px; letter-spacing: 0.04em;
     text-transform: uppercase; padding: 1px 5px; border-radius: 4px;
@@ -587,6 +589,10 @@
   }
   .strict-badge.fair {
     background: rgba(232, 179, 79, 0.14); color: var(--amber); border-color: rgba(232, 179, 79, 0.35);
+  }
+  .strict-badge.extreme {
+    background: linear-gradient(90deg, rgba(255, 107, 92, 0.18), rgba(232, 179, 79, 0.18));
+    color: var(--red); border-color: rgba(255, 107, 92, 0.45); font-weight: 700;
   }
   .status-tag.eod_close, .status-tag.session_close { background: rgba(139, 150, 168, 0.12); color: var(--text-secondary); }
 
@@ -1171,6 +1177,7 @@
       </div>
       <div class="filter-group" id="strictFilter">
         <div class="chip" id="strictModeToggle" title="5m/15m only: scores 8 trend/anti-consolidation conditions, plus a 09:30-14:45 IST time gate">Strict Mode</div>
+        <div class="chip strict-tier-chip" data-strict="extreme" style="display:none;" title="Very Strong or Fair PLUS the entry-extension condition: price hasn't run more than 1.5x ATR beyond its own EMA9 -- a shallow pullback entry, not a stretched/late one">🚀 Extreme</div>
         <div class="chip strict-tier-chip" data-strict="very_strong" style="display:none;" title="Score 7-8 of 8: EMA50 trend, higher-timeframe trend, VWAP, ADX rising, DI direction, ATR expansion, EMA9/26 gap widening">🔥 Very Strong</div>
         <div class="chip strict-tier-chip" data-strict="fair" style="display:none;" title="Score 5-6 of 8 on the same 8 conditions">✓ Fair</div>
       </div>
@@ -1525,7 +1532,7 @@
   let lastMoversBySymbol = {};  // set on every fetchSignals() -- the live LTPs behind the Net P&L stat
   let activeSignalFilter = "ALL";
   let activeStatusFilter = "ALL";
-  let strictTier = "off"; // "off" | "very_strong" | "fair"
+  let strictTier = "off"; // "off" | "extreme" | "very_strong" | "fair"
   let activeTfFilter = "ALL";
   let symbolQuery = "";
 
@@ -1838,6 +1845,7 @@
         <div class="sig-tf">
           ${s.timeframe}
           <div class="sig-sub" style="margin-top:2px;">ADX ${adxLabel}</div>
+          ${s.strict_tier === 'extreme' ? `<div class="strict-badge extreme">🚀 Extreme (${s.strict_score}/8)</div>` : ''}
           ${s.strict_tier === 'very_strong' ? `<div class="strict-badge">🔥 Very Strong (${s.strict_score}/8)</div>` : ''}
           ${s.strict_tier === 'fair' ? `<div class="strict-badge fair">Fair (${s.strict_score}/8)</div>` : ''}
         </div>
@@ -2199,9 +2207,9 @@
     renderFeed();
   });
 
-  // "Strict Mode" is a parent toggle: turning it on reveals the Very
-  // Strong / Fair tier chips (defaulting to Very Strong); turning it off
-  // hides them again and clears the filter entirely.
+  // "Strict Mode" is a parent toggle: turning it on reveals the Extreme /
+  // Very Strong / Fair tier chips (defaulting to Very Strong); turning it
+  // off hides them again and clears the filter entirely.
   document.getElementById('strictModeToggle').addEventListener('click', () => {
     const modeOn = !document.getElementById('strictModeToggle').classList.contains('active');
     document.getElementById('strictModeToggle').classList.toggle('active', modeOn);
@@ -2527,15 +2535,16 @@
     if (e.target.id === 'dailyFavModal') document.getElementById('dailyFavModal').classList.remove('show');
   });
 
-  // ---- Category Performance: Normal / Strong / Strict Very Strong / Fair ----
-  // -- independent slices (not a partition -- a signal can count in more
-  // than one row), so tiers can be compared side by side the same way the
-  // user compares them manually today. Reuses the same bucket helpers as
-  // the Accuracy study (emptyPeriodBucket/addToBucket) and the same ratio/
-  // pnl formatters as Daily Favorable.
+  // ---- Category Performance: Normal / Strong / Strict Extreme / Very     ----
+  // ---- Strong / Fair -- independent slices (not a partition -- a signal
+  // can count in more than one row), so tiers can be compared side by side
+  // the same way the user compares them manually today. Reuses the same
+  // bucket helpers as the Accuracy study (emptyPeriodBucket/addToBucket)
+  // and the same ratio/pnl formatters as Daily Favorable.
   const CATEGORY_DEFS = [
     { key: 'normal', label: 'Normal (Buy / Sell)', match: s => s.strength !== 'strong' },
     { key: 'strong', label: 'Strong (Buy / Sell)', match: s => s.strength === 'strong' },
+    { key: 'extreme', label: 'Strict Mode: Extreme', match: s => s.strict_tier === 'extreme' },
     { key: 'very_strong', label: 'Strict Mode: Very Strong', match: s => s.strict_tier === 'very_strong' },
     { key: 'fair', label: 'Strict Mode: Fair', match: s => s.strict_tier === 'fair' },
   ];
