@@ -1186,6 +1186,7 @@
         <div class="chip" data-tab="direction">Live Direction</div>
         <div class="chip" data-tab="timeofday">Time of Day (5m/15m)</div>
         <div class="chip" data-tab="realorders">Real Orders</div>
+        <div class="chip" data-tab="commodity">Commodity</div>
       </div>
       <div class="feed-count" id="feedCount"></div>
     </div>
@@ -1227,6 +1228,18 @@
         ⚡ Trading Mode panel (top left) -- 'stopped' means nothing here ever gets written.
       </div>
       <div id="realOrdersContainer">
+        <div class="empty-state">Loading…</div>
+      </div>
+    </div>
+
+    <div id="commodityTab" style="display:none;">
+      <div class="accuracy-note" style="margin-bottom:14px;">
+        MCX commodities (Gold, Gold Mini, Silver, Silver Mini, Natural Gas, Natural Gas Mini, Crude Oil, Crude Oil
+        Mini) -- 15m/4h/1d only, EMA 9/21 crossover, gated by same-timeframe VWAP alignment and a consolidation/
+        breakout check (suppressed inside a range-bound market unless price genuinely breaks out of it). A separate
+        asset class from the stock feed above -- shows Favourable/Unfavourable only, same as Normal stock signals.
+      </div>
+      <div id="commodityContainer">
         <div class="empty-state">Loading…</div>
       </div>
     </div>
@@ -2787,6 +2800,87 @@
     loadRealOrders();
   });
 
+  // ---- Commodity tab (MCX: Gold/Gold Mini/Silver/Silver Mini/Natural   ----
+  // Gas/Natural Gas Mini/Crude Oil/Crude Oil Mini) -- reuses the exact   ----
+  // same .signal-row card shape as the stock feed above, minus the      ----
+  // ADX/strict-tier/charges fields that don't apply to this asset class,----
+  // and minus click-to-open-chart (no /candles endpoint for commodities ----
+  // yet). Shows Favourable/Unfavourable only, same as Normal stock rows.----
+  function commoditySignalCard(s) {
+    const tier = Number(s.tier || 0);
+    const pnlKnown = s.pnl_amount !== null && s.pnl_amount !== undefined;
+    const realized = Number(s.realized_pnl_amount || 0);
+    const showAmount = pnlKnown ? Number(s.pnl_amount) : (tier > 0 ? realized : null);
+    const favUnfavClass = showAmount == null ? "" : (showAmount >= 0 ? "pos" : "neg");
+    const favUnfavLabel = showAmount == null ? "—" : (showAmount >= 0 ? "Favourable" : "Unfavourable");
+
+    const statusTag = STATUS_LABELS[s.status === "open" ? "open" : s.exit_reason] || s.status;
+    const statusClass = s.status === "open" ? "open" : (s.exit_reason || "");
+
+    const activeStop = s.active_stop_loss != null ? Number(s.active_stop_loss) : (s.stop_loss != null ? Number(s.stop_loss) : null);
+    const slLabel = tier >= 2 ? 'SL→T1' : tier >= 1 ? 'SL→BE' : 'SL';
+    const tgt = (n, price) => {
+      const hit = tier >= n;
+      const val = price != null ? '₹' + Number(price).toFixed(2) : '—';
+      return `<div class="tp${hit ? ' hit' : ''}">T${n} ${val}${hit ? ' <span class="tick">✓</span>' : ''}</div>`;
+    };
+    const badgeClass = s.signal_type === 'BUY' ? 'buy' : 'sell';
+
+    return `
+    <div class="signal-row">
+      <div class="sig-badge ${badgeClass}">${s.signal_type}</div>
+      <div class="sig-main">
+        <div class="sig-symbol">${s.display_name || s.symbol || s.trading_symbol}</div>
+        <div class="sig-sub">${s.indicator || 'EMA'} · ${s.trading_symbol || ''}</div>
+      </div>
+      <div class="sig-entry">
+        ₹${Number(s.entry_price).toFixed(2)}
+        <div class="sig-sub">entry</div>
+      </div>
+      <div class="sig-levels">
+        <div class="sl">${slLabel} ₹${activeStop != null ? activeStop.toFixed(2) : '—'}</div>
+        ${tgt(1, s.target_profit)}
+        ${s.target_profit_2 != null ? tgt(2, s.target_profit_2) : ''}
+        ${s.target_profit_3 != null ? tgt(3, s.target_profit_3) : ''}
+      </div>
+      <div class="sig-pnl ${favUnfavClass}">
+        ${favUnfavLabel}
+        <div class="sig-sub">
+          <span class="status-tag ${statusClass}">${statusTag}</span>
+          ${!pnlKnown && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
+        </div>
+      </div>
+      <div class="sig-tf">${s.timeframe}</div>
+      <div class="sig-time">
+        <div class="exact">${fmtExactTime(s.generated_at)}</div>
+        <div class="ago">${timeAgo(s.generated_at)}</div>
+      </div>
+    </div>`;
+  }
+
+  function renderCommoditySignals(rows) {
+    const el = document.getElementById('commodityContainer');
+    if (!rows.length) {
+      el.innerHTML = `<div class="empty-state">No commodity signals yet.</div>`;
+      return;
+    }
+    rows.sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
+    el.innerHTML = `<div class="signal-list">` + rows.map(commoditySignalCard).join('') + `</div>`;
+  }
+
+  async function loadCommodity() {
+    const el = document.getElementById('commodityContainer');
+    el.innerHTML = `<div class="empty-state">Loading…</div>`;
+    try {
+      const res = await fetch(`${API_BASE}/commodity-history?limit=200`);
+      if (!res.ok) throw new Error('not available');
+      const rows = await res.json();
+      renderCommoditySignals(rows);
+    } catch (e) {
+      el.innerHTML = `<div class="empty-state">Couldn't load commodity signals. Backend may not have this feature deployed yet.</div>`;
+    }
+  }
+
   // ---- Time of Day (5m/15m only): every signal, individually, grouped   ----
   // ---- by GENERATION time into the 4 windows that line up with the      ----
   // ---- daily 3 PM force-close -- "signal generated and its result",     ----
@@ -2987,6 +3081,7 @@
     document.getElementById('directionTab').style.display = tab === 'direction' ? '' : 'none';
     document.getElementById('timeOfDayTab').style.display = tab === 'timeofday' ? '' : 'none';
     document.getElementById('realOrdersTab').style.display = tab === 'realorders' ? '' : 'none';
+    document.getElementById('commodityTab').style.display = tab === 'commodity' ? '' : 'none';
     document.getElementById('feedCount').style.display = tab === 'history' ? '' : 'none';
     if (tab === 'direction') {
       document.getElementById('directionSummary').innerHTML = `<div class="accuracy-empty">Loading…</div>`;
@@ -2997,6 +3092,8 @@
       loadTimeOfDay();
     } else if (tab === 'realorders') {
       loadRealOrders();
+    } else if (tab === 'commodity') {
+      loadCommodity();
     }
   }
 
