@@ -1847,6 +1847,7 @@
             <span class="status-tag ${isTriggered ? 'not-counted' : statusClass}">${isTriggered ? 'Not counted' : statusTag}</span>
             ${!isTriggered && hasLiveLtp ? `<div class="sig-sub" style="margin-top:2px;">mark-to-market${tier > 0 ? `, ${tier === 1 ? '50' : '80'}% booked` : ''}</div>` : ''}
             ${!isTriggered && !pnlKnown && !hasLiveLtp && tier > 0 ? `<div class="sig-sub" style="margin-top:2px;">${tier === 1 ? '50' : '80'}% booked so far</div>` : ''}
+            ${!isTriggered && s.total_charges != null ? `<div class="sig-sub" style="margin-top:2px;">Charges ₹${Number(s.total_charges).toFixed(2)}${!pnlKnown ? ' so far' : ''}</div>` : ''}
           </div>
         </div>
         <div class="sig-tf">
