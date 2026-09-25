@@ -1364,11 +1364,13 @@
       </div>
       <div class="accuracy-note">
         Each row is an INDEPENDENT slice (a signal can count in more than one -- e.g. a Strong signal can also
-        score Very Strong on Strict Mode) -- this compares tiers side by side, not a single partition. Favorable =
-        closed with positive P&amp;L, unfavorable = closed at a loss or breakeven. Return on Capital = net P&amp;L
-        &divide; total capital deployed across every CLOSED signal in that row (each signal notionally sizes at
-        Rs 1L per trade). Buy/Sell Triggered signals (ADX hasn't confirmed a real trend) are excluded
-        throughout. Uses the FULL date range below, not just the 300 shown on screen.
+        score Very Strong on Strict Mode) -- this compares tiers side by side, not a single partition. Includes
+        LIVE (still open) signals, not just closed ones: favorable/unfavorable and Net P&amp;L both fold in
+        provisional mark-to-market P&amp;L for anything still open (same live LTP-based calculation as the
+        sidebar's Net P&amp;L card) alongside realized P&amp;L for anything closed. Return on Capital = net P&amp;L
+        (closed + provisional) &divide; total capital deployed across every signal in that row, closed or open
+        (each signal notionally sizes at Rs 1L per trade). Buy/Sell Triggered signals (ADX hasn't confirmed a
+        real trend) are excluded throughout. Uses the FULL date range below, not just the 300 shown on screen.
         Range: <span id="categoryPerfRange">—</span>
       </div>
       <div class="accuracy-daily-wrap">
@@ -2549,28 +2551,40 @@
     { key: 'fair', label: 'Strict Mode: Fair', match: s => s.strict_tier === 'fair' },
   ];
 
-  function computeCategoryPerformance(rows) {
+  // Favorable/unfavorable and Net P&L cover BOTH closed and still-open
+  // signals -- open ones use the same live mark-to-market provisionalPnl()
+  // the main Net P&L stat card and its detail modal already use (realized
+  // partial-exit P&L plus the unrealized move on quantity_remaining, at the
+  // current LTP from market-movers). "Favorable" for an open signal means
+  // provisionalPnl >= 0, matching the Net P&L detail modal's convention.
+  function computeCategoryPerformance(rows, moversBySymbol = {}) {
     const confirmed = rows.filter(countsTowardPnl);
     return CATEGORY_DEFS.map(def => {
-      const bucket = emptyPeriodBucket();
-      let capitalDeployed = 0; // sum of investment_amount across CLOSED signals in this category
+      let total = 0, buy = 0, sell = 0, closed = 0, open = 0;
+      let favorable = 0, unfavorable = 0, netPnl = 0, capitalDeployed = 0;
       confirmed.filter(def.match).forEach(s => {
+        total += 1;
+        if (s.signal_type === 'BUY') buy += 1; else sell += 1;
+        capitalDeployed += Number(s.investment_amount) || 100000;
         const isClosed = s.status === 'closed' && s.pnl_amount != null;
-        const pnl = isClosed ? Number(s.pnl_amount) : 0;
-        addToBucket(bucket, s, pnl, isClosed, {});
-        if (isClosed) capitalDeployed += Number(s.investment_amount) || 100000;
+        const pnl = isClosed ? Number(s.pnl_amount) : provisionalPnl(s, moversBySymbol);
+        netPnl += pnl;
+        if (isClosed) {
+          closed += 1;
+          if (pnl > 0) favorable += 1; else unfavorable += 1;
+        } else {
+          open += 1;
+          if (pnl >= 0) favorable += 1; else unfavorable += 1;
+        }
       });
-      bucket.favorable = bucket.wins;
-      bucket.unfavorable = bucket.closed - bucket.wins;
-      bucket.capitalDeployed = capitalDeployed;
-      bucket.roiPercent = capitalDeployed ? (bucket.netPnl / capitalDeployed) * 100 : null;
-      return { key: def.key, label: def.label, ...bucket };
+      const roiPercent = capitalDeployed ? (netPnl / capitalDeployed) * 100 : null;
+      return { key: def.key, label: def.label, total, buy, sell, closed, open, favorable, unfavorable, netPnl, capitalDeployed, roiPercent };
     });
   }
 
-  // Return on capital = net P&L / total capital deployed across every
-  // CLOSED signal in the category (each signal notionally sizes at
-  // investment_amount, default Rs 1L -- see signal_outcomes.investment_amount).
+  // Return on capital = net P&L (closed + live provisional) / total capital
+  // deployed across every signal in the category, closed or still open
+  // (each signal notionally sizes at investment_amount, default Rs 1L).
   function roiLabel(c) {
     return c.roiPercent == null ? '—' : `${c.roiPercent >= 0 ? '+' : ''}${c.roiPercent.toFixed(2)}%`;
   }
@@ -2581,21 +2595,23 @@
       const ratioClass = c.favorable > c.unfavorable ? 'pos' : c.unfavorable > c.favorable ? 'neg' : '';
       const pnlClass = c.netPnl > 0 ? 'pos' : c.netPnl < 0 ? 'neg' : '';
       const roiClass = c.roiPercent > 0 ? 'pos' : c.roiPercent < 0 ? 'neg' : '';
+      const counted = c.favorable + c.unfavorable;
       return `
       <tr>
         <td>${c.label}<br><span style="color:var(--text-dim); font-size:10px;">${c.buy} Buy / ${c.sell} Sell</span></td>
         <td>${c.total}</td>
         <td>${c.closed}</td>
+        <td>${c.open}</td>
         <td class="pos">${c.favorable}</td>
         <td class="neg">${c.unfavorable}</td>
         <td class="${ratioClass}">${ratioLabel(c)}</td>
-        <td class="${pnlClass}">${c.closed ? pnlLabel(c.netPnl) : '—'}</td>
+        <td class="${pnlClass}">${counted ? pnlLabel(c.netPnl) : '—'}</td>
         <td class="${roiClass}">${roiLabel(c)}</td>
       </tr>`;
     }).join('');
     table.innerHTML = `
       <thead><tr>
-        <th>Category</th><th>Total</th><th>Closed</th><th>Favorable</th><th>Unfavorable</th><th>Ratio (F:U)</th><th>Net P&amp;L</th><th>Return on Capital</th>
+        <th>Category</th><th>Total</th><th>Closed</th><th>Open</th><th>Favorable</th><th>Unfavorable</th><th>Ratio (F:U)</th><th>Net P&amp;L</th><th>Return on Capital</th>
       </tr></thead>
       <tbody>${rows}</tbody>`;
   }
@@ -2608,8 +2624,8 @@
     document.getElementById('categoryPerfRange').textContent =
       dateFrom ? `${dateFrom} to ${dateTo || todayIST()}` : 'last 30 days (no "From" date set)';
     try {
-      const rows = await fetchFullRange(dateFrom, dateTo);
-      renderCategoryPerformance(computeCategoryPerformance(rows));
+      const [rows, moversBySymbol] = await Promise.all([fetchFullRange(dateFrom, dateTo), fetchMoversBySymbol()]);
+      renderCategoryPerformance(computeCategoryPerformance(rows, moversBySymbol));
     } catch (e) {
       document.getElementById('categoryPerfTable').innerHTML =
         `<tbody><tr><td class="accuracy-empty" colspan="7">Couldn't load the full range. Check the backend is reachable.</td></tr></tbody>`;
