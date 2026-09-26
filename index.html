@@ -1095,15 +1095,10 @@
         <div class="stat-label">⚡ Trading Mode</div>
         <div class="stat-value" id="tradingModeSummary" style="font-size:14px;">—</div>
       </button>
-      <div class="tf-box">
-        <div class="filter-group" id="tfFilter">
-          <div class="chip active" data-tf="ALL">All timeframes</div>
-          <div class="chip" data-tf="5m">5m</div>
-          <div class="chip" data-tf="15m">15m</div>
-          <div class="chip" data-tf="4h">4h</div>
-          <div class="chip" data-tf="1d">1d</div>
-        </div>
-      </div>
+      <button class="stat-card stat-card-btn" id="realOrdersTrigger">
+        <div class="stat-label">📋 Real Orders</div>
+        <div class="stat-value" style="font-size:14px;">Alice Blue order log</div>
+      </button>
       <button class="stat-card stat-card-btn" id="exportExcelBtn">
         <div class="stat-label">⬇ Export Daily P&amp;L</div>
         <div class="stat-value" style="font-size:14px;">Date range</div>
@@ -1111,6 +1106,10 @@
       <button class="stat-card stat-card-btn" id="accuracyTrigger">
         <div class="stat-label">⏰ Time of Day Accuracy</div>
         <div class="stat-value" style="font-size:14px;">Accuracy study</div>
+      </button>
+      <button class="stat-card stat-card-btn" id="timeOfDayTrigger">
+        <div class="stat-label">🕐 Time of Day — Signals</div>
+        <div class="stat-value" style="font-size:14px;">Individual list</div>
       </button>
     </div>
 
@@ -1158,6 +1157,23 @@
       </div>
     </header>
 
+    <div class="feed-header">
+      <div class="filter-group" id="assetClassFilter">
+        <div class="chip active" data-asset="stock">Stocks</div>
+        <div class="chip" data-asset="commodity">Commodity</div>
+      </div>
+    </div>
+
+    <div class="feed-header">
+      <div class="filter-group" id="strategyFilter">
+        <div class="chip active" data-strategy="ema">EMA Based Signal</div>
+        <div class="chip" data-strategy="breakout_retest">Breakout - Retest Based Signal</div>
+      </div>
+      <div class="feed-count" id="feedCount"></div>
+    </div>
+
+    <div class="accuracy-note" id="viewExplainerNote" style="margin-bottom:14px;"></div>
+
     <div class="filters" id="stockFiltersBar">
       <div class="filter-group" id="signalFilter">
         <div class="chip active" data-signal="ALL">All</div>
@@ -1168,6 +1184,13 @@
         <div class="chip active" data-status="ALL">All status</div>
         <div class="chip" data-status="open">Live (open)</div>
         <div class="chip" data-status="closed">Closed</div>
+      </div>
+      <div class="filter-group" id="tfFilter">
+        <div class="chip active" data-tf="ALL">All timeframes</div>
+        <div class="chip" data-tf="5m">5m</div>
+        <div class="chip" data-tf="15m">15m</div>
+        <div class="chip" data-tf="4h">4h</div>
+        <div class="chip" data-tf="1d">1d</div>
       </div>
       <div class="filter-group" id="strictFilter">
         <div class="chip" id="strictModeToggle" title="5m/15m only: scores 8 trend/anti-consolidation conditions, plus a 09:30-14:45 IST time gate">Strict Mode</div>
@@ -1180,73 +1203,12 @@
       <input class="search-input" id="symbolSearch" placeholder="Filter by symbol…">
     </div>
 
-    <div class="feed-header">
-      <div class="filter-group" id="mainTabFilter">
-        <div class="chip active" data-tab="history">Signal History</div>
-        <div class="chip" data-tab="direction">Live Direction</div>
-        <div class="chip" data-tab="timeofday">Time of Day (5m/15m)</div>
-        <div class="chip" data-tab="realorders">Real Orders</div>
-        <div class="chip" data-tab="commodity">Commodity</div>
-      </div>
-      <div class="feed-count" id="feedCount"></div>
-    </div>
-
     <div id="feedContainer">
       <div class="empty-state">Loading signals…</div>
     </div>
 
-    <div id="directionTab" style="display:none;">
-      <div class="accuracy-note" style="margin-bottom:14px;">
-        Every currently OPEN Buy/Sell signal (Triggered signals excluded -- ADX hasn't
-        confirmed a real trend for those), compared to its live price right now -- from any day, since a signal
-        only closes on its stop-loss or a target. "In favor" = price has moved the way the signal needs (up for
-        BUY, down for SELL) since entry; "against" = the opposite. Click any stock to open its chart. As of:
-        <span id="directionAsOf">—</span>
-      </div>
-      <div class="accuracy-summary" id="directionSummary">
-        <div class="accuracy-empty">Loading…</div>
-      </div>
-      <div id="directionTfBreakdown"></div>
-      <div class="direction-lists" id="directionLists"></div>
-    </div>
-
-    <div id="timeOfDayTab" style="display:none;">
-      <div class="accuracy-note" style="margin-bottom:14px;">
-        5m/15m signals only, grouped by GENERATION time (IST) into 4 windows -- matching the daily 3 PM force-close
-        (a 5m/15m position that hasn't hit its stop or a target by then closes at whatever the LTP is). Uses the
-        FULL date range below, not just the 300 shown on screen. Buy/Sell Triggered signals are excluded.
-      </div>
-      <div id="timeOfDayContainer">
-        <div class="empty-state">Loading…</div>
-      </div>
-    </div>
-
-    <div id="realOrdersTab" style="display:none;">
-      <div class="accuracy-note" style="margin-bottom:14px;">
-        Every real order attempt via Alice Blue -- placed, rejected (with a reason), cancelled, or awaiting
-        semi-auto approval. A "DRY RUN" tag means it was logged but never sent to the broker. Controlled by the
-        ⚡ Trading Mode panel (top left) -- 'stopped' means nothing here ever gets written.
-      </div>
-      <div id="realOrdersContainer">
-        <div class="empty-state">Loading…</div>
-      </div>
-    </div>
-
-    <div id="commodityTab" style="display:none;">
-      <div class="accuracy-note" style="margin-bottom:14px;">
-        MCX commodities (Gold, Gold Mini, Silver, Silver Mini, Natural Gas, Natural Gas Mini, Crude Oil, Crude Oil
-        Mini) -- 15m/4h/1d only, from two fully independent strategies (see each card's sub-label): <b>EMA 9/21</b>
-        crossover, gated by same-timeframe VWAP alignment and a consolidation/breakout check (a crossover inside a
-        range-bound market is held rather than dropped, and fires the moment a later candle actually breaks out,
-        ⚡ Breakout tag); and <b>Breakout + Retest</b> (📊 Retest tag) -- no EMA, no VWAP, the standard
-        professional price-action version: the range must hold 10+ candles AND show 2+ genuine tests of both
-        support and resistance, then break out on above-average volume, then a pin-bar/hammer-style rejection
-        candle on below-average volume must retest the broken level before a bounce off it fires. A separate
-        asset class from the stock feed above -- shows Favourable/Unfavourable only, same as Normal stock signals.
-      </div>
-      <div id="commodityContainer">
-        <div class="empty-state">Loading…</div>
-      </div>
+    <div id="commodityContainer" style="display:none;">
+      <div class="empty-state">Loading…</div>
     </div>
 
     <footer id="footerNote">Refreshes every 15s · Backend: <span id="apiBaseLabel"></span></footer>
@@ -1304,6 +1266,61 @@
       <div class="chart-footer">
         <span>Live from your own Angel One feed — same EMA the signal engine compares, no delay, no subscription.</span>
         <a href="#" id="chartTvLink" target="_blank" rel="noopener">Open in TradingView ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="directionModal">
+    <div class="movers-box accuracy-box">
+      <div class="movers-header">
+        <div class="movers-title">Live Signal Direction</div>
+        <button class="movers-close" id="closeDirection">✕</button>
+      </div>
+      <div class="accuracy-note" style="margin-bottom:14px;">
+        Every currently OPEN Buy/Sell signal (Triggered signals excluded -- ADX hasn't
+        confirmed a real trend for those), compared to its live price right now -- from any day, since a signal
+        only closes on its stop-loss or a target. "In favor" = price has moved the way the signal needs (up for
+        BUY, down for SELL) since entry; "against" = the opposite. Click any stock to open its chart. As of:
+        <span id="directionAsOf">—</span>
+      </div>
+      <div class="accuracy-summary" id="directionSummary">
+        <div class="accuracy-empty">Loading…</div>
+      </div>
+      <div id="directionTfBreakdown"></div>
+      <div class="direction-lists" id="directionLists"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="timeOfDayModal">
+    <div class="movers-box accuracy-box">
+      <div class="movers-header">
+        <div class="movers-title">Time of Day — Individual Signals (5m/15m)</div>
+        <button class="movers-close" id="closeTimeOfDay">✕</button>
+      </div>
+      <div class="accuracy-note" style="margin-bottom:14px;">
+        5m/15m signals only, grouped by GENERATION time (IST) into 4 windows -- matching the daily 3 PM force-close
+        (a 5m/15m position that hasn't hit its stop or a target by then closes at whatever the LTP is). Uses the
+        FULL date range below, not just the 300 shown on screen. Buy/Sell Triggered signals are excluded.
+      </div>
+      <div id="timeOfDayContainer">
+        <div class="empty-state">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="realOrdersModal">
+    <div class="movers-box accuracy-box">
+      <div class="movers-header">
+        <div class="movers-title">Real Orders</div>
+        <button class="movers-close" id="closeRealOrders">✕</button>
+      </div>
+      <div class="accuracy-note" style="margin-bottom:14px;">
+        Every real order attempt via Alice Blue -- placed, rejected (with a reason), cancelled, or awaiting
+        semi-auto approval. A "DRY RUN" tag means it was logged but never sent to the broker. Controlled by the
+        ⚡ Trading Mode panel (top left) -- 'stopped' means nothing here ever gets written.
+      </div>
+      <div id="realOrdersContainer">
+        <div class="empty-state">Loading…</div>
       </div>
     </div>
   </div>
@@ -1550,6 +1567,14 @@
   let strictTier = "off"; // "off" | "extreme" | "very_strong" | "fair"
   let activeTfFilter = "ALL";
   let symbolQuery = "";
+  // Two-level nav: which asset class, then which of its two fully
+  // independent strategies (see each engine's own module docstring on the
+  // backend -- EMA9/26 crossover vs Breakout+Retest, no EMA involved at
+  // all). The Buy/Sell/status/date/symbol filter bar above applies to
+  // whichever of the two feeds below is currently showing; Strict Mode
+  // only makes sense for stock+EMA (see applyView()).
+  let activeAssetClass = "stock";      // "stock" | "commodity"
+  let activeStrategy = "ema";          // "ema" | "breakout_retest"
 
   // Default the date filter to today (IST) so the feed opens on the
   // freshest data; the backend never deletes history, so widening this
@@ -1667,13 +1692,20 @@
   // longer exists). The backend still records every raw crossover
   // regardless (needed for cooldown/history); this is purely what's shown.
   //   adx_status === 'favor' -> Buy/Sell (confirmed)
+  // BREAKOUT_RETEST signals have no ADX concept at all (see
+  // signals/breakout_retest.py) -- the strategy's own consolidation/
+  // volume/rejection-candle/bounce sequence IS the confirmation, so
+  // there's no separate Triggered-vs-Confirmed split for it; always
+  // "confirmed" once it's fired.
   function isAdxConfirmed(s) {
+    if (s.indicator === 'BREAKOUT_RETEST') return true;
     return s.adx_status === 'favor';
   }
 
   function matchesSignalFilter(s, filter) {
     const confirmed = isAdxConfirmed(s);
     if (!confirmed) return false;
+    if ((s.indicator || 'EMA') !== (activeStrategy === 'ema' ? 'EMA' : 'BREAKOUT_RETEST')) return false;
     switch (filter) {
       case 'BUY': return s.signal_type === 'BUY';
       case 'SELL': return s.signal_type === 'SELL';
@@ -2272,14 +2304,19 @@
     renderMovers();
   });
 
-  // ---- Filter wiring ----
+  // ---- Filter wiring ---- (shared across all 4 asset-class/strategy
+  // combinations -- dispatches to whichever feed is currently showing)
+  function renderActiveFeed() {
+    if (activeAssetClass === 'stock') renderFeed(); else renderCommodityFeed();
+  }
+
   document.getElementById('signalFilter').addEventListener('click', e => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
     document.querySelectorAll('#signalFilter .chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     activeSignalFilter = chip.dataset.signal;
-    renderFeed();
+    renderActiveFeed();
   });
 
   document.getElementById('statusFilter').addEventListener('click', e => {
@@ -2288,12 +2325,13 @@
     document.querySelectorAll('#statusFilter .chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     activeStatusFilter = chip.dataset.status;
-    renderFeed();
+    renderActiveFeed();
   });
 
   // "Strict Mode" is a parent toggle: turning it on reveals the Extreme /
   // Very Strong / Fair tier chips (defaulting to Very Strong); turning it
-  // off hides them again and clears the filter entirely.
+  // off hides them again and clears the filter entirely. Stock+EMA only
+  // (see applyView()) -- never applies to the commodity feed.
   document.getElementById('strictModeToggle').addEventListener('click', () => {
     const modeOn = !document.getElementById('strictModeToggle').classList.contains('active');
     document.getElementById('strictModeToggle').classList.toggle('active', modeOn);
@@ -2323,21 +2361,23 @@
     document.querySelectorAll('#tfFilter .chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     activeTfFilter = chip.dataset.tf;
-    renderFeed();
+    renderActiveFeed();
   });
 
   document.getElementById('symbolSearch').addEventListener('input', e => {
     symbolQuery = e.target.value;
-    renderFeed();
+    renderActiveFeed();
   });
 
   document.getElementById('dateFrom').addEventListener('change', () => {
     fetchSignals();
-    if (activeMainTab === 'timeofday') loadTimeOfDay();
+    loadCommodity();
+    if (document.getElementById('timeOfDayModal').classList.contains('show')) loadTimeOfDay();
   });
   document.getElementById('dateTo').addEventListener('change', () => {
     fetchSignals();
-    if (activeMainTab === 'timeofday') loadTimeOfDay();
+    loadCommodity();
+    if (document.getElementById('timeOfDayModal').classList.contains('show')) loadTimeOfDay();
   });
 
   // ---- Excel export: full date-range daily P&L, independent of the ----
@@ -2968,10 +3008,38 @@
     </div>`;
   }
 
-  function renderCommoditySignals(rows) {
+  let allCommoditySignals = [];  // fetched once per loadCommodity() call, filtered client-side like allSignals
+
+  // Same shape as matchesSignalFilter -- commodities have no ADX/Triggered
+  // concept at all (every persisted row already passed its strategy's
+  // gates), so this is just signal-type + which of the two independent
+  // strategies (EMA vs Breakout+Retest) the shared strategy chips picked.
+  function commodityMatchesFilter(s, filter) {
+    if ((s.indicator || 'EMA') !== (activeStrategy === 'ema' ? 'EMA' : 'BREAKOUT_RETEST')) return false;
+    switch (filter) {
+      case 'BUY': return s.signal_type === 'BUY';
+      case 'SELL': return s.signal_type === 'SELL';
+      default: return true;
+    }
+  }
+
+  function filteredCommoditySignals() {
+    return allCommoditySignals.filter(s => {
+      if (!commodityMatchesFilter(s, activeSignalFilter)) return false;
+      if (activeStatusFilter === "open" && s.status !== "open") return false;
+      if (activeStatusFilter === "closed" && s.status !== "closed") return false;
+      if (activeTfFilter !== "ALL" && s.timeframe !== activeTfFilter) return false;
+      if (symbolQuery && !(s.trading_symbol || s.symbol || "").toLowerCase().includes(symbolQuery.toLowerCase())) return false;
+      return true;
+    });
+  }
+
+  function renderCommodityFeed() {
     const el = document.getElementById('commodityContainer');
+    const rows = filteredCommoditySignals();
+    document.getElementById('feedCount').textContent = `${rows.length} shown`;
     if (!rows.length) {
-      el.innerHTML = `<div class="empty-state">No commodity signals yet.</div>`;
+      el.innerHTML = `<div class="empty-state">No commodity signals match these filters yet.</div>`;
       return;
     }
     rows.sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
@@ -2993,9 +3061,10 @@
         );
       }
       if (!historyRes.ok) throw new Error('not available');
-      const rows = await historyRes.json();
-      renderCommoditySignals(rows);
+      allCommoditySignals = await historyRes.json();
+      renderCommodityFeed();
     } catch (e) {
+      allCommoditySignals = [];
       el.innerHTML = `<div class="empty-state">Couldn't load commodity signals. Backend may not have this feature deployed yet.</div>`;
     }
   }
@@ -3188,47 +3257,88 @@
     }
   }
 
-  // ---- Main tab switcher: Signal History <-> Live Direction, inline in ----
-  // ---- the page (not a popup) -- clicking a stock in either one opens  ----
-  // ---- the same live chart.                                            ----
-  let activeMainTab = 'history';
+  // ---- Two-level nav: Stocks/Commodity, then which of that asset       ----
+  // ---- class's two fully independent strategies (EMA crossover vs     ----
+  // ---- Breakout+Retest) -- everything below (the shared filter bar,   ----
+  // ---- the feed itself) reacts to whichever of the four combinations  ----
+  // ---- is picked. Live Direction/Time of Day/Real Orders moved out of ----
+  // ---- the primary nav into their own modals (sidebar-triggered, same ----
+  // ---- pattern as Accuracy/P&L/Category Performance/Trading Mode).    ----
+  const VIEW_NOTES = {
+    stock_ema: 'NSE/BSE stocks -- EMA9/26 crossover, promoted from Triggered to a real Buy/Sell once ADX+DI confirms an actual trend on that timeframe. Strict Mode scores 8 trend/anti-consolidation conditions on top for a very_strong/fair/extreme tier, which shows the real ₹1,00,000-notional P&L net of STT/brokerage/exchange charges; every other row here shows Favourable/Unfavourable only.',
+    stock_breakout_retest: 'NSE/BSE stocks -- Breakout + Retest, no EMA at all: the range must hold 10+ candles AND show 2+ genuine tests of both support and resistance, then break out on above-average volume, then a pin-bar/hammer-style rejection candle on below-average volume must retest the broken level before a bounce off it fires. Shows Favourable/Unfavourable only, same real STT/brokerage charges applied as EMA signals.',
+    commodity_ema: 'MCX commodities (Gold, Gold Mini, Silver, Silver Mini, Natural Gas, Natural Gas Mini, Crude Oil, Crude Oil Mini) -- 15m/4h/1d only. EMA 9/21 crossover, gated by same-timeframe VWAP alignment and a consolidation/breakout check (⚡ Breakout tag when a held-back crossover fires on a later breakout). Shows Favourable/Unfavourable only, no real ₹ P&L for this asset class.',
+    commodity_breakout_retest: 'MCX commodities -- 15m/4h/1d only. Breakout + Retest (📊 Retest tag), no EMA, no VWAP: the same standard price-action version as stocks (multiply-tested range, volume-confirmed breakout, pin-bar retest on contracting volume). Shows Favourable/Unfavourable only.',
+  };
 
-  function setMainTab(tab) {
-    activeMainTab = tab;
-    document.querySelectorAll('#mainTabFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.tab === tab));
-    document.getElementById('feedContainer').style.display = tab === 'history' ? '' : 'none';
-    document.getElementById('directionTab').style.display = tab === 'direction' ? '' : 'none';
-    document.getElementById('timeOfDayTab').style.display = tab === 'timeofday' ? '' : 'none';
-    document.getElementById('realOrdersTab').style.display = tab === 'realorders' ? '' : 'none';
-    document.getElementById('commodityTab').style.display = tab === 'commodity' ? '' : 'none';
-    document.getElementById('feedCount').style.display = tab === 'history' ? '' : 'none';
-    // Commodities are a separate asset class from everything the top filter
-    // bar controls (Buy/Sell/status/Strict Mode/date range/symbol search all
-    // apply to stock data) -- hide it entirely so the tab reads as its own
-    // exclusive section, not a cramped extra option among stock filters.
-    document.getElementById('stockFiltersBar').style.display = tab === 'commodity' ? 'none' : '';
-    if (tab === 'direction') {
-      document.getElementById('directionSummary').innerHTML = `<div class="accuracy-empty">Loading…</div>`;
-      document.getElementById('directionTfBreakdown').innerHTML = '';
-      document.getElementById('directionLists').innerHTML = '';
-      loadDirection();
-    } else if (tab === 'timeofday') {
-      loadTimeOfDay();
-    } else if (tab === 'realorders') {
-      loadRealOrders();
-    } else if (tab === 'commodity') {
-      loadCommodity();
+  function applyView() {
+    document.querySelectorAll('#assetClassFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.asset === activeAssetClass));
+    document.querySelectorAll('#strategyFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.strategy === activeStrategy));
+    document.getElementById('viewExplainerNote').textContent = VIEW_NOTES[`${activeAssetClass}_${activeStrategy}`] || '';
+
+    const isStock = activeAssetClass === 'stock';
+    document.getElementById('feedContainer').style.display = isStock ? '' : 'none';
+    document.getElementById('commodityContainer').style.display = isStock ? 'none' : '';
+    // Strict Mode is a stock+EMA-only concept (ADX/anti-consolidation
+    // scoring on the EMA9/26 crossover) -- hidden for every other combination.
+    document.getElementById('strictFilter').style.display = (isStock && activeStrategy === 'ema') ? '' : 'none';
+    // Commodities never track 5m (see commodities/engine.py -- 15m/4h/1d
+    // only); hide that timeframe chip so it can't be picked into an
+    // always-empty commodity feed.
+    const fiveMinChip = document.querySelector('#tfFilter .chip[data-tf="5m"]');
+    if (fiveMinChip) fiveMinChip.style.display = isStock ? '' : 'none';
+    if (!isStock && activeTfFilter === '5m') {
+      activeTfFilter = 'ALL';
+      document.querySelectorAll('#tfFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.tf === 'ALL'));
+    }
+
+    if (isStock) {
+      renderFeed();
+    } else {
+      renderCommodityFeed();
+      if (!allCommoditySignals.length) loadCommodity();  // first switch to Commodity -- fetch once
     }
   }
 
-  document.getElementById('mainTabFilter').addEventListener('click', e => {
+  function setAssetClass(cls) { activeAssetClass = cls; applyView(); }
+  function setStrategy(strategy) { activeStrategy = strategy; applyView(); }
+
+  document.getElementById('assetClassFilter').addEventListener('click', e => {
     const chip = e.target.closest('.chip');
-    if (chip) setMainTab(chip.dataset.tab);
+    if (chip) setAssetClass(chip.dataset.asset);
   });
-  // Sidebar shortcut jumps straight to the Live Direction tab.
+  document.getElementById('strategyFilter').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (chip) setStrategy(chip.dataset.strategy);
+  });
+
+  // ---- Live Direction / Time of Day / Real Orders: now modals, same     ----
+  // ---- sidebar-trigger pattern as Accuracy/P&L/Category Performance.    ----
+  function openModal(id) { document.getElementById(id).classList.add('show'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+  [
+    ['directionModal', 'closeDirection'],
+    ['timeOfDayModal', 'closeTimeOfDay'],
+    ['realOrdersModal', 'closeRealOrders'],
+  ].forEach(([modalId, closeBtnId]) => {
+    document.getElementById(closeBtnId).addEventListener('click', () => closeModal(modalId));
+    document.getElementById(modalId).addEventListener('click', e => { if (e.target.id === modalId) closeModal(modalId); });
+  });
+
   document.getElementById('directionTrigger').addEventListener('click', () => {
-    setMainTab('direction');
-    document.getElementById('directionTab').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('directionSummary').innerHTML = `<div class="accuracy-empty">Loading…</div>`;
+    document.getElementById('directionTfBreakdown').innerHTML = '';
+    document.getElementById('directionLists').innerHTML = '';
+    openModal('directionModal');
+    loadDirection();
+  });
+  document.getElementById('timeOfDayTrigger').addEventListener('click', () => {
+    openModal('timeOfDayModal');
+    loadTimeOfDay();
+  });
+  document.getElementById('realOrdersTrigger').addEventListener('click', () => {
+    openModal('realOrdersModal');
+    loadRealOrders();
   });
   document.getElementById('directionLists').addEventListener('click', e => {
     const item = e.target.closest('.direction-item');
@@ -3414,9 +3524,9 @@
     fetchSignals();
     loadTradingModeSummary();
     fetchIndices();
-    if (activeMainTab === 'direction') loadDirection();
-    if (activeMainTab === 'realorders') loadRealOrders();
-    if (activeMainTab === 'commodity') loadCommodity();
+    if (activeAssetClass === 'commodity') loadCommodity();
+    if (document.getElementById('directionModal').classList.contains('show')) loadDirection();
+    if (document.getElementById('realOrdersModal').classList.contains('show')) loadRealOrders();
   }
   refresh();
   setInterval(refresh, 15000);
