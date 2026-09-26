@@ -1168,6 +1168,9 @@
       <div class="filter-group" id="strategyFilter">
         <div class="chip active" data-strategy="ema">EMA Based Signal</div>
         <div class="chip" data-strategy="breakout_retest">Breakout - Retest Based Signal</div>
+        <div class="chip" data-strategy="supertrend">Supertrend</div>
+        <div class="chip" data-strategy="vwap">VWAP Bounce</div>
+        <div class="chip" data-strategy="orb">Opening Range Breakout</div>
       </div>
       <div class="feed-count" id="feedCount"></div>
     </div>
@@ -1574,7 +1577,31 @@
   // whichever of the two feeds below is currently showing; Strict Mode
   // only makes sense for stock+EMA (see applyView()).
   let activeAssetClass = "stock";      // "stock" | "commodity"
-  let activeStrategy = "ema";          // "ema" | "breakout_retest"
+  let activeStrategy = "ema";          // "ema" | "breakout_retest" | "supertrend" | "vwap" | "orb"
+
+  // Maps a strategy chip to the backend's Indicator enum value (see
+  // signals/engine.py's Indicator) -- used to filter the feed to whichever
+  // strategy tab is active.
+  const STRATEGY_INDICATOR = {
+    ema: 'EMA', breakout_retest: 'BREAKOUT_RETEST',
+    supertrend: 'SUPERTREND', vwap: 'VWAP', orb: 'ORB',
+  };
+
+  // Timeframe chips each (assetClass, strategy) combo may pick from -- EMA/
+  // Breakout-Retest/Supertrend keep the full set (trend-following and
+  // price-action patterns are meaningful at any horizon); VWAP Bounce and
+  // Opening Range Breakout are inherently intraday-only concepts (VWAP
+  // resets daily, an "opening range" only exists near the session open).
+  const STRATEGY_TIMEFRAMES = {
+    stock: {
+      ema: ['5m', '15m', '4h', '1d'], breakout_retest: ['5m', '15m', '4h', '1d'],
+      supertrend: ['5m', '15m', '4h', '1d'], vwap: ['5m', '15m'], orb: ['5m', '15m'],
+    },
+    commodity: {
+      ema: ['15m', '4h', '1d'], breakout_retest: ['15m', '4h', '1d'],
+      supertrend: ['15m', '4h', '1d'], vwap: ['15m'], orb: ['15m'],
+    },
+  };
 
   // Default the date filter to today (IST) so the feed opens on the
   // freshest data; the backend never deletes history, so widening this
@@ -1705,7 +1732,7 @@
   function matchesSignalFilter(s, filter) {
     const confirmed = isAdxConfirmed(s);
     if (!confirmed) return false;
-    if ((s.indicator || 'EMA') !== (activeStrategy === 'ema' ? 'EMA' : 'BREAKOUT_RETEST')) return false;
+    if ((s.indicator || 'EMA') !== STRATEGY_INDICATOR[activeStrategy]) return false;
     switch (filter) {
       case 'BUY': return s.signal_type === 'BUY';
       case 'SELL': return s.signal_type === 'SELL';
@@ -3015,7 +3042,7 @@
   // gates), so this is just signal-type + which of the two independent
   // strategies (EMA vs Breakout+Retest) the shared strategy chips picked.
   function commodityMatchesFilter(s, filter) {
-    if ((s.indicator || 'EMA') !== (activeStrategy === 'ema' ? 'EMA' : 'BREAKOUT_RETEST')) return false;
+    if ((s.indicator || 'EMA') !== STRATEGY_INDICATOR[activeStrategy]) return false;
     switch (filter) {
       case 'BUY': return s.signal_type === 'BUY';
       case 'SELL': return s.signal_type === 'SELL';
@@ -3269,6 +3296,12 @@
     stock_breakout_retest: 'NSE/BSE stocks -- Breakout + Retest, no EMA at all: the range must hold 10+ candles AND show 2+ genuine tests of both support and resistance, then break out on above-average volume, then a pin-bar/hammer-style rejection candle on below-average volume must retest the broken level before a bounce off it fires. Shows Favourable/Unfavourable only, same real STT/brokerage charges applied as EMA signals.',
     commodity_ema: 'MCX commodities (Gold, Gold Mini, Silver, Silver Mini, Natural Gas, Natural Gas Mini, Crude Oil, Crude Oil Mini) -- 15m/4h/1d only. EMA 9/21 crossover, gated by same-timeframe VWAP alignment and a consolidation/breakout check (⚡ Breakout tag when a held-back crossover fires on a later breakout). Shows Favourable/Unfavourable only, no real ₹ P&L for this asset class.',
     commodity_breakout_retest: 'MCX commodities -- 15m/4h/1d only. Breakout + Retest (📊 Retest tag), no EMA, no VWAP: the same standard price-action version as stocks (multiply-tested range, volume-confirmed breakout, pin-bar retest on contracting volume). Shows Favourable/Unfavourable only.',
+    stock_supertrend: 'NSE/BSE stocks -- Supertrend, ATR-based trend-following (10-period ATR, 3x multiplier): fires the moment the trend flips, no EMA/consolidation/volume gates involved. All 4 timeframes. Shows Favourable/Unfavourable only.',
+    stock_vwap: 'NSE/BSE stocks -- VWAP Bounce, intraday only (5m/15m): price holds one side of the day-session VWAP to establish a trend, pulls back to touch it with a genuine rejection candle on light volume, then a confirmed bounce back past VWAP fires. Shows Favourable/Unfavourable only.',
+    stock_orb: 'NSE/BSE stocks -- Opening Range Breakout, intraday only (5m/15m): the first 15 minutes of the session set a high/low range; the first candle to close beyond it on a volume spike fires, once per direction per day. Shows Favourable/Unfavourable only.',
+    commodity_supertrend: 'MCX commodities -- 15m/4h/1d only. Same Supertrend trend-following strategy as stocks, own settings. Shows Favourable/Unfavourable only.',
+    commodity_vwap: 'MCX commodities -- 15m only. Same VWAP Bounce strategy as stocks (touch + rejection candle + light volume, then a confirmed bounce). Shows Favourable/Unfavourable only.',
+    commodity_orb: 'MCX commodities -- 15m only. Same Opening Range Breakout strategy as stocks, but measured from MCX\'s own 09:00 IST session open. Shows Favourable/Unfavourable only.',
   };
 
   function applyView() {
@@ -3282,12 +3315,18 @@
     // Strict Mode is a stock+EMA-only concept (ADX/anti-consolidation
     // scoring on the EMA9/26 crossover) -- hidden for every other combination.
     document.getElementById('strictFilter').style.display = (isStock && activeStrategy === 'ema') ? '' : 'none';
-    // Commodities never track 5m (see commodities/engine.py -- 15m/4h/1d
-    // only); hide that timeframe chip so it can't be picked into an
-    // always-empty commodity feed.
-    const fiveMinChip = document.querySelector('#tfFilter .chip[data-tf="5m"]');
-    if (fiveMinChip) fiveMinChip.style.display = isStock ? '' : 'none';
-    if (!isStock && activeTfFilter === '5m') {
+    // Each (assetClass, strategy) combo only supports a subset of
+    // timeframes (see STRATEGY_TIMEFRAMES -- e.g. commodities never track
+    // 5m at all, and VWAP Bounce/ORB are intraday-only concepts even for
+    // stocks); hide every chip outside that set so it can't be picked into
+    // an always-empty feed, and fall back to "All timeframes" if the
+    // previously-active one just fell out of range.
+    const allowedTfs = STRATEGY_TIMEFRAMES[activeAssetClass][activeStrategy];
+    document.querySelectorAll('#tfFilter .chip[data-tf]').forEach(chip => {
+      const tf = chip.dataset.tf;
+      chip.style.display = (tf === 'ALL' || allowedTfs.includes(tf)) ? '' : 'none';
+    });
+    if (activeTfFilter !== 'ALL' && !allowedTfs.includes(activeTfFilter)) {
       activeTfFilter = 'ALL';
       document.querySelectorAll('#tfFilter .chip').forEach(c => c.classList.toggle('active', c.dataset.tf === 'ALL'));
     }
