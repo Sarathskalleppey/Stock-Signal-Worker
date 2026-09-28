@@ -765,6 +765,13 @@
     padding: 20px;
     width: 100%;
     max-width: 900px;
+    /* height (not just max-height) so the flex column has real space to
+       distribute -- #chartContainer's flex-grow only has something to grow
+       into once this box actually claims the room. If content is shorter
+       (e.g. a Triggered-tier chart with no sub-panels) the price chart
+       simply fills the rest; if content is taller than 90vh it still
+       scrolls exactly as before. */
+    height: 90vh;
     max-height: 90vh;
     overflow-y: auto;
     display: flex;
@@ -810,7 +817,15 @@
   .chart-legend .legend-item:hover { background: rgba(255,255,255,0.06); border-color: var(--border); }
   .chart-legend .legend-item.legend-hidden { opacity: 0.4; text-decoration: line-through; }
   #chartContainer {
-    height: 440px;
+    /* Grows to fill whatever room is left in the modal (flex column) once
+       the ADX/Volume/RSI sub-panels below shrink or collapse -- e.g. when
+       their indicators are all toggled off in the legend (see
+       syncPanelVisibility()), or when the tier gate hides them outright for
+       a Triggered signal, the candlestick chart itself expands to use that
+       freed space rather than leaving it empty. 440px is just the starting
+       point when every panel is showing. */
+    flex: 1 1 440px;
+    min-height: 300px;
     border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
@@ -2007,6 +2022,27 @@
     return `<span class="legend-item${hidden ? ' legend-hidden' : ''}" data-series="${key}" title="Click to ${hidden ? 'show' : 'hide'}"><b style="color:${color}">●</b> ${label}</span>`;
   }
 
+  // Which legend keys live in which ADX/Volume/RSI sub-panel wrapper --
+  // when EVERY indicator in a panel gets toggled off, the whole wrapper
+  // (title + empty chart box) collapses instead of sitting there blank and
+  // eating vertical space the candlestick chart could otherwise use. Shows
+  // it again the moment any one of its indicators comes back on. Only
+  // applies for a 'confirmed'-tier chart, where these panels exist at all
+  // (see applyTierPanels) -- a no-op call for 'triggered' is harmless since
+  // the wraps just aren't in the DOM's visible flow either way.
+  const PANEL_GROUPS = {
+    chartAdxWrap: ['adx', 'plus_di', 'minus_di'],
+    chartVwapVolWrap: ['volume'],
+    chartRsiWrap: ['rsi'],
+  };
+  function syncPanelVisibility() {
+    for (const [wrapId, keys] of Object.entries(PANEL_GROUPS)) {
+      const wrap = document.getElementById(wrapId);
+      if (!wrap || wrap.dataset.tierHidden === 'true') continue;  // tier gate already hides it
+      wrap.style.display = keys.every(k => hiddenIndicators.has(k)) ? 'none' : '';
+    }
+  }
+
   document.getElementById('chartLegend').addEventListener('click', e => {
     const item = e.target.closest('.legend-item');
     if (!item) return;
@@ -2022,6 +2058,7 @@
     if (key === 'volume' && volumeAvgSeries) volumeAvgSeries.applyOptions({ visible: !willHide });
     item.classList.toggle('legend-hidden', willHide);
     item.title = `Click to ${willHide ? 'show' : 'hide'}`;
+    syncPanelVisibility();
   });
 
   function ensureChart() {
@@ -2046,9 +2083,13 @@
       color: '#B47EF5', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dashed,
       priceLineVisible: false, lastValueVisible: false,
     }));
+    // Tracks height too (the sub-panel version below only tracks width) --
+    // #chartContainer now flex-grows as ADX/Volume/RSI panels collapse (see
+    // the CSS and syncPanelVisibility()), so the candlestick chart itself
+    // needs to pick up that extra room, not just stay at its 440px start.
     chartResizeObserver = new ResizeObserver(entries => {
-      const { width } = entries[0].contentRect;
-      if (width > 0) chart.applyOptions({ width });
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) chart.applyOptions({ width, height });
     });
     chartResizeObserver.observe(container);
   }
@@ -2104,13 +2145,22 @@
   }
 
   // Shows/hides the ADX/VWAP+Volume/RSI sub-panels for the given tier,
-  // creating each lazily the first time it's actually needed.
+  // creating each lazily the first time it's actually needed. `tierHidden`
+  // marks each wrap so syncPanelVisibility() (per-indicator collapse, see
+  // above) knows the tier gate already decided this panel's fate and
+  // doesn't fight it -- e.g. never un-hides an ADX panel for a Triggered
+  // signal just because the user happens to re-enable the ADX legend chip.
   function applyTierPanels(tier) {
     const showConfirmedExtras = tier === 'confirmed';
-    document.getElementById('chartAdxWrap').style.display = showConfirmedExtras ? '' : 'none';
-    document.getElementById('chartVwapVolWrap').style.display = showConfirmedExtras ? '' : 'none';
-    document.getElementById('chartRsiWrap').style.display = showConfirmedExtras ? '' : 'none';
-    if (showConfirmedExtras) { ensureAdxChart(); ensureVolumeChart(); ensureRsiChart(); }
+    ['chartAdxWrap', 'chartVwapVolWrap', 'chartRsiWrap'].forEach(id => {
+      const wrap = document.getElementById(id);
+      wrap.style.display = showConfirmedExtras ? '' : 'none';
+      wrap.dataset.tierHidden = showConfirmedExtras ? 'false' : 'true';
+    });
+    if (showConfirmedExtras) {
+      ensureAdxChart(); ensureVolumeChart(); ensureRsiChart();
+      syncPanelVisibility();  // reflect any indicators already hidden from a prior chart this session
+    }
   }
 
   async function loadCommodityChart() {
