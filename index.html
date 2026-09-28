@@ -798,8 +798,17 @@
   }
   .chart-sub { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
   .chart-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .chart-legend { font-size: 11px; color: var(--text-secondary); display: flex; gap: 16px; }
+  .chart-legend { font-size: 11px; color: var(--text-secondary); display: flex; gap: 8px; flex-wrap: wrap; }
   .chart-legend b { font-weight: 600; }
+  /* Each indicator's legend chip doubles as a show/hide toggle -- click to
+     drop it off the chart (candles stay, since those ARE the chart, not an
+     overlay). Dimmed + struck-through marks a currently-hidden series. */
+  .chart-legend .legend-item {
+    cursor: pointer; user-select: none; padding: 2px 7px; border-radius: 5px;
+    border: 1px solid transparent; transition: opacity 0.15s, background 0.15s;
+  }
+  .chart-legend .legend-item:hover { background: rgba(255,255,255,0.06); border-color: var(--border); }
+  .chart-legend .legend-item.legend-hidden { opacity: 0.4; text-decoration: line-through; }
   #chartContainer {
     height: 440px;
     border: 1px solid var(--border);
@@ -1979,6 +1988,42 @@
     return isAdxConfirmed(s) ? 'confirmed' : 'triggered';
   }
 
+  // ---- Per-indicator show/hide (candles are never toggleable -- those ARE
+  // the chart). Persists across symbol/timeframe switches and the 20s poll
+  // refresh for as long as the chart modal stays open this session, since
+  // each series is created exactly once (ensure*Chart functions are
+  // idempotent) and setData() never touches the `visible` option.
+  const hiddenIndicators = new Set();
+  const SERIES_BY_KEY = {};
+
+  function registerSeries(key, series) {
+    SERIES_BY_KEY[key] = series;
+    if (hiddenIndicators.has(key)) series.applyOptions({ visible: false });
+    return series;
+  }
+
+  function legendSpan(key, color, label) {
+    const hidden = hiddenIndicators.has(key);
+    return `<span class="legend-item${hidden ? ' legend-hidden' : ''}" data-series="${key}" title="Click to ${hidden ? 'show' : 'hide'}"><b style="color:${color}">●</b> ${label}</span>`;
+  }
+
+  document.getElementById('chartLegend').addEventListener('click', e => {
+    const item = e.target.closest('.legend-item');
+    if (!item) return;
+    const key = item.dataset.series;
+    const series = SERIES_BY_KEY[key];
+    if (!series) return;
+    const willHide = !hiddenIndicators.has(key);
+    if (willHide) hiddenIndicators.add(key); else hiddenIndicators.delete(key);
+    series.applyOptions({ visible: !willHide });
+    // The "Volume" legend chip covers both the volume bars and their
+    // rolling-average line as one toggle -- there's no separate chip for
+    // the average, so it follows whatever the bars just did.
+    if (key === 'volume' && volumeAvgSeries) volumeAvgSeries.applyOptions({ visible: !willHide });
+    item.classList.toggle('legend-hidden', willHide);
+    item.title = `Click to ${willHide ? 'show' : 'hide'}`;
+  });
+
   function ensureChart() {
     if (chart) return;
     const container = document.getElementById('chartContainer');
@@ -1995,12 +2040,12 @@
       upColor: '#3DDC97', downColor: '#FF6B5C', borderVisible: false,
       wickUpColor: '#3DDC97', wickDownColor: '#FF6B5C',
     });
-    emaFastSeries = chart.addLineSeries({ color: '#E8B34F', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
-    emaSlowSeries = chart.addLineSeries({ color: '#5B8DEF', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
-    vwapSeries = chart.addLineSeries({
+    emaFastSeries = registerSeries('ema_fast', chart.addLineSeries({ color: '#E8B34F', lineWidth: 2, priceLineVisible: false, lastValueVisible: false }));
+    emaSlowSeries = registerSeries('ema_slow', chart.addLineSeries({ color: '#5B8DEF', lineWidth: 2, priceLineVisible: false, lastValueVisible: false }));
+    vwapSeries = registerSeries('vwap', chart.addLineSeries({
       color: '#B47EF5', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dashed,
       priceLineVisible: false, lastValueVisible: false,
-    });
+    }));
     chartResizeObserver = new ResizeObserver(entries => {
       const { width } = entries[0].contentRect;
       if (width > 0) chart.applyOptions({ width });
@@ -2034,26 +2079,27 @@
     if (adxChart) return;
     const { subChart } = ensureSubChart('chartAdxContainer');
     adxChart = subChart;
-    adxSeries = adxChart.addLineSeries({ color: '#E8B34F', lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+    adxSeries = registerSeries('adx', adxChart.addLineSeries({ color: '#E8B34F', lineWidth: 2, priceLineVisible: false, lastValueVisible: true }));
     // +DI/-DI: which direction is actually driving the trend -- part of the
     // same Buy/Sell gate as ADX itself now (see backend classify_adx).
-    plusDiSeries = adxChart.addLineSeries({ color: '#3DDC97', lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
-    minusDiSeries = adxChart.addLineSeries({ color: '#FF6B5C', lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
+    plusDiSeries = registerSeries('plus_di', adxChart.addLineSeries({ color: '#3DDC97', lineWidth: 1, priceLineVisible: false, lastValueVisible: true }));
+    minusDiSeries = registerSeries('minus_di', adxChart.addLineSeries({ color: '#FF6B5C', lineWidth: 1, priceLineVisible: false, lastValueVisible: true }));
   }
 
   function ensureVolumeChart() {
     if (volumeChart) return;
     const { subChart } = ensureSubChart('chartVolumeContainer');
     volumeChart = subChart;
-    volumeSeries = volumeChart.addHistogramSeries({ color: '#5B8DEF', priceLineVisible: false, lastValueVisible: false });
+    volumeSeries = registerSeries('volume', volumeChart.addHistogramSeries({ color: '#5B8DEF', priceLineVisible: false, lastValueVisible: false }));
     volumeAvgSeries = volumeChart.addLineSeries({ color: '#E8B34F', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    if (hiddenIndicators.has('volume')) volumeAvgSeries.applyOptions({ visible: false });
   }
 
   function ensureRsiChart() {
     if (rsiChart) return;
     const { subChart } = ensureSubChart('chartRsiContainer');
     rsiChart = subChart;
-    rsiSeries = rsiChart.addLineSeries({ color: '#3DDC97', lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+    rsiSeries = registerSeries('rsi', rsiChart.addLineSeries({ color: '#3DDC97', lineWidth: 2, priceLineVisible: false, lastValueVisible: true }));
     rsiSeries.createPriceLine({ price: 50, color: '#57647A', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false, title: '50' });
   }
 
@@ -2084,9 +2130,9 @@
       chart.priceScale('right').applyOptions({ autoScale: true });
 
       const legendParts = [
-        `<span><b style="color:var(--amber)">●</b> EMA ${data.ema_fast_period}</span>`,
-        `<span><b style="color:#5B8DEF">●</b> EMA ${data.ema_slow_period}</span>`,
-        `<span><b style="color:#B47EF5">●</b> VWAP</span>`,
+        legendSpan('ema_fast', 'var(--amber)', `EMA ${data.ema_fast_period}`),
+        legendSpan('ema_slow', '#5B8DEF', `EMA ${data.ema_slow_period}`),
+        legendSpan('vwap', '#B47EF5', 'VWAP'),
       ];
       if (data.live_bar) legendParts.push(`<span style="color:var(--green)">● live</span>`);
       legend.innerHTML = legendParts.join('');
@@ -2151,16 +2197,16 @@
       }
 
       const legendParts = [
-        `<span><b style="color:var(--amber)">●</b> EMA ${data.ema_fast_period}</span>`,
-        `<span><b style="color:#5B8DEF">●</b> EMA ${data.ema_slow_period}</span>`,
+        legendSpan('ema_fast', 'var(--amber)', `EMA ${data.ema_fast_period}`),
+        legendSpan('ema_slow', '#5B8DEF', `EMA ${data.ema_slow_period}`),
       ];
       if (chartTier === 'confirmed') {
-        legendParts.push(`<span><b style="color:#E8B34F">●</b> ADX ${data.adx_period}</span>`);
-        legendParts.push(`<span><b style="color:#3DDC97">●</b> +DI</span>`);
-        legendParts.push(`<span><b style="color:#FF6B5C">●</b> -DI</span>`);
-        legendParts.push(`<span><b style="color:#B47EF5">●</b> VWAP</span>`);
-        legendParts.push(`<span><b style="color:#5B8DEF">●</b> Volume</span>`);
-        legendParts.push(`<span><b style="color:#3DDC97">●</b> RSI ${data.rsi_period}</span>`);
+        legendParts.push(legendSpan('adx', '#E8B34F', `ADX ${data.adx_period}`));
+        legendParts.push(legendSpan('plus_di', '#3DDC97', '+DI'));
+        legendParts.push(legendSpan('minus_di', '#FF6B5C', '-DI'));
+        legendParts.push(legendSpan('vwap', '#B47EF5', 'VWAP'));
+        legendParts.push(legendSpan('volume', '#5B8DEF', 'Volume'));
+        legendParts.push(legendSpan('rsi', '#3DDC97', `RSI ${data.rsi_period}`));
       }
       if (data.live_bar) legendParts.push(`<span style="color:var(--green)">● live</span>`);
       legend.innerHTML = legendParts.join('');
